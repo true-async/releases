@@ -42,7 +42,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # Build Docker images
+  # Build Docker images (each includes both cli and fpm)
   # ---------------------------------------------------------------------------
   build-docker:
     name: "Docker (${{ matrix.tag }})"
@@ -53,18 +53,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - tag: 8.6-cli
+          - tag: "8.6"
             dockerfile: docker/Dockerfile.debian
-            sapi: cli
-          - tag: 8.6-fpm
-            dockerfile: docker/Dockerfile.debian
-            sapi: fpm
-          - tag: 8.6-cli-alpine
+          - tag: 8.6-alpine
             dockerfile: docker/Dockerfile.alpine
-            sapi: cli
-          - tag: 8.6-fpm-alpine
-            dockerfile: docker/Dockerfile.alpine
-            sapi: fpm
     steps:
       - uses: actions/checkout@v4
 
@@ -84,7 +76,6 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           build-args: |
-            SAPI=${{ matrix.sapi }}
             PHP_SRC_BRANCH=${{ needs.config.outputs.php_src_branch }}
             ASYNC_BRANCH=${{ needs.config.outputs.async_branch }}
             XDEBUG_BRANCH=${{ needs.config.outputs.xdebug_branch }}
@@ -117,6 +108,6 @@ jobs:
 
       - name: Pull and tag latest
         run: |
-          docker pull trueasync/php-true-async:8.6-cli
-          docker tag trueasync/php-true-async:8.6-cli trueasync/php-true-async:latest
+          docker pull trueasync/php-true-async:8.6
+          docker tag trueasync/php-true-async:8.6 trueasync/php-true-async:latest
           docker push trueasync/php-true-async:latest

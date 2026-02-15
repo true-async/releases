@@ -1,14 +1,11 @@
-# TrueAsync PHP — Debian-based image (cli / fpm)
-# Build args: SAPI=cli|fpm, PHP_SRC_BRANCH, ASYNC_BRANCH, XDEBUG_BRANCH
-
-ARG SAPI=cli
+# TrueAsync PHP — Ubuntu 24.04 image (cli + fpm)
+# Build args: PHP_SRC_BRANCH, ASYNC_BRANCH, XDEBUG_BRANCH
 
 # =============================================================================
 # Stage 1: Build PHP from source
 # =============================================================================
 FROM ubuntu:24.04 AS builder
 
-ARG SAPI
 ARG PHP_SRC_REPO=https://github.com/true-async/php-src.git
 ARG PHP_SRC_BRANCH=true-async-stable
 ARG ASYNC_REPO=https://github.com/true-async/php-async.git
@@ -56,18 +53,17 @@ RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-
 # Fix possible Windows line endings
 RUN dos2unix /usr/src/php-src/ext/async/config.m4
 
-# Build PHP
+# Build PHP (cli + fpm)
 WORKDIR /usr/src/php-src
 
 RUN ./buildconf --force \
-    && FPM_FLAG="" \
-    && if [ "$SAPI" = "fpm" ]; then FPM_FLAG="--enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data"; fi \
     && ./configure \
         --prefix=/usr/local \
         --with-config-file-path=/etc \
         --with-config-file-scan-dir=/etc/php.d \
         --disable-debug --enable-zts \
         --enable-async \
+        --enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data \
         --enable-phpdbg \
         --enable-bcmath \
         --enable-calendar \
@@ -115,7 +111,6 @@ RUN ./buildconf --force \
         --with-lmdb \
         --with-libxml \
         --without-pear \
-        ${FPM_FLAG} \
     && make -j"$(nproc)" \
     && make install
 
@@ -136,8 +131,6 @@ RUN mkdir -p /etc/php.d \
 # Stage 2: Runtime image
 # =============================================================================
 FROM ubuntu:24.04
-
-ARG SAPI
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -164,23 +157,16 @@ RUN ldconfig
 ENV PATH="/usr/local/bin:/usr/local/sbin:${PATH}"
 
 # FPM configuration
-RUN if [ "$SAPI" = "fpm" ]; then \
-        cp /usr/local/etc/php-fpm.conf.default /usr/local/etc/php-fpm.conf \
-        && cp /usr/local/etc/php-fpm.d/www.conf.default /usr/local/etc/php-fpm.d/www.conf \
-        && sed -i 's/;daemonize = yes/daemonize = no/' /usr/local/etc/php-fpm.conf \
-        && sed -i 's/listen = .*/listen = 9000/' /usr/local/etc/php-fpm.d/www.conf; \
-    fi
+RUN cp /usr/local/etc/php-fpm.conf.default /usr/local/etc/php-fpm.conf \
+    && cp /usr/local/etc/php-fpm.d/www.conf.default /usr/local/etc/php-fpm.d/www.conf \
+    && sed -i 's/;daemonize = yes/daemonize = no/' /usr/local/etc/php-fpm.conf \
+    && sed -i 's/listen = .*/listen = 9000/' /usr/local/etc/php-fpm.d/www.conf
 
 # Verify
 RUN php -v && php -m
-
-# Persist SAPI for CMD
-ENV PHP_SAPI=${SAPI}
 
 WORKDIR /app
 
 EXPOSE 9000
 
-STOPSIGNAL SIGQUIT
-
-CMD ["sh", "-c", "if [ \"$PHP_SAPI\" = 'fpm' ]; then php-fpm; else php -a; fi"]
+CMD ["php", "-a"]

@@ -5,19 +5,19 @@ Pre-built PHP binaries and Docker images with native async/coroutine support via
 ## Docker (Linux)
 
 ```bash
-docker pull trueasync/php-true-async:8.6-cli
-docker run --rm trueasync/php-true-async:8.6-cli php -v
+docker pull trueasync/php-true-async:8.6
+docker run --rm trueasync/php-true-async:8.6 php -v
 ```
+
+Each image includes both `php` (CLI) and `php-fpm`.
 
 Available tags:
 
 | Tag | Base | Description |
 |-----|------|-------------|
-| `8.6-cli` | Debian 12 | CLI for scripts, workers, async servers |
-| `8.6-fpm` | Debian 12 | PHP-FPM for web applications |
-| `8.6-cli-alpine` | Alpine 3.20 | Lightweight CLI (~50MB) |
-| `8.6-fpm-alpine` | Alpine 3.20 | Lightweight FPM (~50MB) |
-| `latest` | Debian 12 | Alias for `8.6-cli` |
+| `8.6` | Ubuntu 24.04 | Full image with cli + fpm |
+| `8.6-alpine` | Alpine 3.20 | Lightweight image with cli + fpm |
+| `latest` | Ubuntu 24.04 | Alias for `8.6` |
 
 ## Windows
 
@@ -55,7 +55,7 @@ Standard PHP extensions: curl, mbstring, openssl, pdo, pdo_mysql, pdo_pgsql, pdo
 
 | Platform | Distribution | Variants | Status |
 |----------|-------------|----------|--------|
-| Linux    | Docker      | cli, fpm, cli-alpine, fpm-alpine | ✅ |
+| Linux    | Docker      | Ubuntu 24.04, Alpine 3.20 | ✅ |
 | Windows  | x64         | Release, Debug | ✅ |
 
 ## Configuration
