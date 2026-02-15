@@ -102,6 +102,16 @@ jobs:
           ninja
           sudo ninja install
           sudo ldconfig
+          cd ../..
+
+          # Build libcurl 8.5.0 from source (need >= 7.87.0 for TrueAsync)
+          wget https://github.com/curl/curl/releases/download/curl-8_5_0/curl-8.5.0.tar.gz
+          tar -xzf curl-8.5.0.tar.gz
+          cd curl-8.5.0
+          ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
 
       - name: Build PHP
         working-directory: php-src
@@ -224,21 +234,28 @@ jobs:
           if not exist "%PHP_BUILD_OBJ_DIR%" mkdir "%PHP_BUILD_OBJ_DIR%"
           git clone --branch %PHP_BUILD_SDK_BRANCH% --depth 1 https://github.com/php/php-sdk-binary-tools.git "%PHP_BUILD_CACHE_SDK_DIR%"
 
-      - name: Build PHP
+      - name: Detect PHP branch and download deps
         shell: cmd
         run: |
           cd php-src
-
           for /f "usebackq tokens=3" %%i in (`findstr PHP_MAJOR_VERSION main\php_version.h`) do set BRANCH=%%i
           for /f "usebackq tokens=3" %%i in (`findstr PHP_MINOR_VERSION main\php_version.h`) do set BRANCH=%BRANCH%.%%i
           if /i "%BRANCH%" equ "8.5" set BRANCH=master
 
-          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
-          set STABILITY=staging
-          set DEPS_DIR=%PHP_BUILD_CACHE_BASE_DIR%\deps-%BRANCH%-%PHP_BUILD_CRT%-%PLATFORM%
+          echo BRANCH=%BRANCH%>> %GITHUB_ENV%
 
-          REM Download PHP deps via SDK
-          cmd /c %SDK_RUNNER% -t "phpsdk_deps --update --no-backup --branch %BRANCH% --stability %STABILITY% --deps %DEPS_DIR% --crt %PHP_BUILD_CRT%"
+          set DEPS_DIR=%PHP_BUILD_CACHE_BASE_DIR%\deps-%BRANCH%-%PHP_BUILD_CRT%-%PLATFORM%
+          echo DEPS_DIR=%DEPS_DIR%>> %GITHUB_ENV%
+
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+
+          REM Create task script for downloading deps
+          > %GITHUB_WORKSPACE%\task_deps.bat echo @echo off
+          >> %GITHUB_WORKSPACE%\task_deps.bat echo phpsdk_deps --update --no-backup --branch %BRANCH% --stability staging --deps %DEPS_DIR% --crt %PHP_BUILD_CRT%
+          >> %GITHUB_WORKSPACE%\task_deps.bat echo if %%errorlevel%% neq 0 exit /b 3
+
+          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_deps.bat
+          if %errorlevel% neq 0 exit /b %errorlevel%
 
           REM Copy LibUV from vcpkg to deps directory
           if not exist "%DEPS_DIR%\include\libuv" mkdir "%DEPS_DIR%\include\libuv"
@@ -249,8 +266,28 @@ jobs:
           copy "C:\vcpkg\installed\x64-windows\lib\uv.lib" "%DEPS_DIR%\lib\libuv.lib"
           copy "C:\vcpkg\installed\x64-windows\bin\uv.dll" "%DEPS_DIR%\bin\uv.dll"
 
-          REM Build PHP
-          cmd /c %SDK_RUNNER% -t "cd %cd% && call buildconf.bat --force && call configure.bat --enable-snapshot-build --disable-debug-pack --enable-object-out-dir=%PHP_BUILD_OBJ_DIR% --with-php-build=%DEPS_DIR% --enable-async --with-prefix=C:\php-trueasync && nmake /NOLOGO"
+      - name: Create build task script
+        shell: pwsh
+        run: |
+          @(
+            "@echo off",
+            "cd /d $($env:GITHUB_WORKSPACE)\php-src",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call buildconf.bat --force",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call configure.bat --enable-snapshot-build --disable-debug-pack --enable-object-out-dir=%PHP_BUILD_OBJ_DIR% --with-php-build=%DEPS_DIR% --enable-async --with-prefix=C:\php-trueasync",
+            "if %errorlevel% neq 0 exit /b 3",
+            "nmake /NOLOGO",
+            "if %errorlevel% neq 0 exit /b 3",
+            "exit /b 0"
+          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_build.bat" -Encoding ASCII
+
+      - name: Build PHP
+        shell: cmd
+        run: |
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_build.bat
+          if %errorlevel% neq 0 exit /b %errorlevel%
 
       - name: Run ext/async tests
         shell: cmd
@@ -260,37 +297,57 @@ jobs:
           "%PHP_BIN%" php-src\run-tests.php --show-diff -p "%PHP_BIN%" php-src\ext\async\tests\
           echo All ext/async tests passed.
 
+      - name: Create install task script
+        shell: pwsh
+        run: |
+          @(
+            "@echo off",
+            "cd /d $($env:GITHUB_WORKSPACE)\php-src",
+            "if %errorlevel% neq 0 exit /b 3",
+            "nmake install",
+            "if %errorlevel% neq 0 exit /b 3",
+            "exit /b 0"
+          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_install.bat" -Encoding ASCII
+
       - name: Install PHP
         shell: cmd
         run: |
-          cd php-src
           set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
-          cmd /c %SDK_RUNNER% -t "cd %cd% && nmake install"
+          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_install.bat
+          if %errorlevel% neq 0 exit /b %errorlevel%
+
+      - name: Create xdebug build task script
+        shell: pwsh
+        run: |
+          # Find phpize.bat
+          $phpize = "C:\php-trueasync\SDK\phpize.bat"
+          if (!(Test-Path $phpize)) { $phpize = "C:\php-trueasync\devel\phpize.bat" }
+          if (!(Test-Path $phpize)) {
+            $found = Get-ChildItem -Path "C:\php-trueasync" -Recurse -Filter "phpize.bat" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { $phpize = $found.FullName }
+            else { Write-Error "phpize.bat not found"; exit 1 }
+          }
+          @(
+            "@echo off",
+            "cd /d $($env:GITHUB_WORKSPACE)\xdebug",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call `"$phpize`"",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call configure.bat --with-php-build=%DEPS_DIR% --enable-xdebug",
+            "if %errorlevel% neq 0 exit /b 3",
+            "nmake /NOLOGO",
+            "if %errorlevel% neq 0 exit /b 3",
+            "nmake install",
+            "if %errorlevel% neq 0 exit /b 3",
+            "exit /b 0"
+          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_xdebug.bat" -Encoding ASCII
 
       - name: Build xdebug
         shell: cmd
         run: |
-          cd php-src
-
-          for /f "usebackq tokens=3" %%i in (`findstr PHP_MAJOR_VERSION main\php_version.h`) do set BRANCH=%%i
-          for /f "usebackq tokens=3" %%i in (`findstr PHP_MINOR_VERSION main\php_version.h`) do set BRANCH=%BRANCH%.%%i
-          if /i "%BRANCH%" equ "8.5" set BRANCH=master
-
           set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
-          set DEPS_DIR=%PHP_BUILD_CACHE_BASE_DIR%\deps-%BRANCH%-%PHP_BUILD_CRT%-%PLATFORM%
-
-          REM Find phpize in the installed PHP
-          set PHPIZE=C:\php-trueasync\SDK\phpize.bat
-          if not exist "%PHPIZE%" set PHPIZE=C:\php-trueasync\devel\phpize.bat
-          if not exist "%PHPIZE%" (
-            echo Looking for phpize.bat...
-            dir /s /b C:\php-trueasync\phpize.bat 2>nul
-            echo ERROR: phpize.bat not found
-            exit /b 1
-          )
-
-          cd %GITHUB_WORKSPACE%\xdebug
-          cmd /c %SDK_RUNNER% -t "cd %cd% && call "%PHPIZE%" && call configure.bat --with-php-build=%DEPS_DIR% --enable-xdebug && nmake /NOLOGO && nmake install"
+          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_xdebug.bat
+          if %errorlevel% neq 0 exit /b %errorlevel%
 
       - name: Package
         run: |
@@ -298,13 +355,8 @@ jobs:
           $archive = "php-trueasync-${version}-windows-x64.zip"
 
           # Copy libuv DLL to the install directory
-          $branch = (Select-String -Path php-src\main\php_version.h -Pattern "PHP_MAJOR_VERSION" | Select-Object -First 1).Line -replace '.*\s(\d+)$','$1'
-          $minor = (Select-String -Path php-src\main\php_version.h -Pattern "PHP_MINOR_VERSION" | Select-Object -First 1).Line -replace '.*\s(\d+)$','$1'
-          $depsDir = "C:\build-cache\deps-${branch}.${minor}-vs17-x64"
-          if ("${branch}.${minor}" -eq "8.5") { $depsDir = "C:\build-cache\deps-master-vs17-x64" }
-
-          if (Test-Path "$depsDir\bin\uv.dll") {
-            Copy-Item "$depsDir\bin\uv.dll" "C:\php-trueasync\" -ErrorAction SilentlyContinue
+          if (Test-Path "$env:DEPS_DIR\bin\uv.dll") {
+            Copy-Item "$env:DEPS_DIR\bin\uv.dll" "C:\php-trueasync\" -ErrorAction SilentlyContinue
           }
 
           Compress-Archive -Path "C:\php-trueasync\*" -DestinationPath "${env:GITHUB_WORKSPACE}\${archive}"
