@@ -15,14 +15,6 @@ on:
 permissions:
   contents: write
 
-env:
-  PHP_SRC_REPO: true-async/php-src
-  PHP_SRC_BRANCH: true-async
-  ASYNC_EXT_REPO: true-async/async
-  ASYNC_EXT_BRANCH: main
-  XDEBUG_REPO: true-async/xdebug
-  XDEBUG_BRANCH: master
-
 jobs:
   # ---------------------------------------------------------------------------
   # Read build configuration
@@ -60,7 +52,8 @@ jobs:
   # ---------------------------------------------------------------------------
   build-linux:
     needs: config
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -88,28 +81,31 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get install -y \
             autoconf automake bison re2c pkg-config \
-            gcc g++ make \
+            build-essential curl cmake ninja-build \
             libxml2-dev libsqlite3-dev libcurl4-openssl-dev \
             libssl-dev libzip-dev zlib1g-dev \
             libpq-dev libonig-dev libsodium-dev \
             libreadline-dev libbz2-dev \
             libgmp-dev libicu-dev libxslt1-dev \
-            libjpeg-dev libwebp-dev libfreetype-dev libpng-dev \
+            libjpeg-dev libwebp-dev libfreetype6-dev libpng-dev \
             libtidy-dev libldap2-dev \
-            libgettextpo-dev \
-            libuv1-dev
+            libgettextpo-dev libargon2-dev
 
-      - name: Show libuv version
-        run: |
-          LIBUV_VER=$(pkg-config --modversion libuv 2>/dev/null || echo "unknown")
-          echo "libuv version: $LIBUV_VER"
+          # Build libuv 1.48.0 from source
+          wget https://github.com/libuv/libuv/archive/v1.48.0.tar.gz
+          tar -xzf v1.48.0.tar.gz
+          cd libuv-1.48.0
+          mkdir build && cd build
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          ninja
+          sudo ninja install
+          sudo ldconfig
 
       - name: Build PHP
         working-directory: php-src
         run: |
-          # Read configure flags from config
           COMMON_FLAGS=$(jq -r '.configure.common | join(" ")' ../build-config.json)
           LINUX_FLAGS=$(jq -r '.configure.linux | join(" ")' ../build-config.json)
 
@@ -129,31 +125,30 @@ jobs:
           "$PHP_BIN" run-tests.php --show-diff -p "$PHP_BIN" ext/async/tests/
           echo "All ext/async tests passed."
 
-      - name: Install to staging directory
+      - name: Install PHP
         working-directory: php-src
         run: |
-          make install INSTALL_ROOT="${GITHUB_WORKSPACE}/staging"
+          sudo make install
 
       - name: Build xdebug
         working-directory: xdebug
         run: |
-          PHP_PREFIX="${GITHUB_WORKSPACE}/staging/opt/php-trueasync"
-          "${PHP_PREFIX}/bin/phpize"
-          ./configure --with-php-config="${PHP_PREFIX}/bin/php-config"
+          /opt/php-trueasync/bin/phpize
+          ./configure --with-php-config=/opt/php-trueasync/bin/php-config
           make -j$(nproc)
-          make install INSTALL_ROOT="${GITHUB_WORKSPACE}/staging"
+          sudo make install
 
       - name: Verify build
         run: |
-          "${GITHUB_WORKSPACE}/staging/opt/php-trueasync/bin/php" -v
-          "${GITHUB_WORKSPACE}/staging/opt/php-trueasync/bin/php" -m
+          /opt/php-trueasync/bin/php -v
+          /opt/php-trueasync/bin/php -m
 
       - name: Package
         run: |
           VERSION="${{ needs.config.outputs.version }}"
           ARCHIVE="php-trueasync-${VERSION}-linux-x64.tar.gz"
 
-          cd staging/opt
+          cd /opt
           tar czf "${GITHUB_WORKSPACE}/${ARCHIVE}" php-trueasync/
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
@@ -171,7 +166,19 @@ jobs:
   build-windows:
     needs: config
     runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      PHP_BUILD_CACHE_BASE_DIR: C:\build-cache
+      PHP_BUILD_OBJ_DIR: C:\obj
+      PHP_BUILD_CACHE_SDK_DIR: C:\build-cache\sdk
+      PHP_BUILD_SDK_BRANCH: php-sdk-2.3.0
+      PHP_BUILD_CRT: vs17
+      PLATFORM: x64
+      THREAD_SAFE: "1"
     steps:
+      - name: git config
+        run: git config --global core.autocrlf false && git config --global core.eol lf
+
       - uses: actions/checkout@v4
 
       - name: Checkout php-src
@@ -186,7 +193,13 @@ jobs:
         with:
           repository: ${{ needs.config.outputs.async_repo }}
           ref: ${{ needs.config.outputs.async_branch }}
-          path: php-src/ext/async
+          path: async
+
+      - name: Copy async extension to ext/async
+        shell: cmd
+        run: |
+          if not exist php-src\ext\async mkdir php-src\ext\async
+          xcopy /E /I /H /Y async php-src\ext\async
 
       - name: Checkout xdebug
         uses: actions/checkout@v4
@@ -195,115 +208,104 @@ jobs:
           ref: ${{ needs.config.outputs.xdebug_branch }}
           path: xdebug
 
-      - name: Setup PHP SDK
+      - name: Setup LibUV
+        shell: powershell
         run: |
-          git clone --depth=1 https://github.com/php/php-sdk-binary-tools.git C:\php-sdk
-        shell: cmd
-
-      - name: Install libuv via vcpkg
-        run: |
-          vcpkg install libuv:x64-windows
-          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Setup libuv for PHP build
-        run: |
-          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
-          $depsDir = "C:\php-deps"
-          New-Item -ItemType Directory -Force -Path "$depsDir\include", "$depsDir\lib"
-
-          # Copy libuv headers
-          Copy-Item -Recurse "$vcpkgRoot\installed\x64-windows\include\*" "$depsDir\include\"
-
-          # Create libuv subdirectory expected by ext/async config.w32
-          if (-not (Test-Path "$depsDir\include\libuv")) {
-            New-Item -ItemType Directory -Force -Path "$depsDir\include\libuv"
-            Copy-Item "$depsDir\include\uv.h" "$depsDir\include\libuv\"
-            if (Test-Path "$depsDir\include\uv") {
-              Copy-Item -Recurse "$depsDir\include\uv" "$depsDir\include\libuv\"
-            }
+          if (!(Test-Path "C:\vcpkg")) {
+            git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+            C:\vcpkg\bootstrap-vcpkg.bat
           }
+          C:\vcpkg\vcpkg.exe install libuv:x64-windows
 
-          # Copy libuv library
-          Copy-Item "$vcpkgRoot\installed\x64-windows\lib\uv.lib" "$depsDir\lib\libuv.lib"
-
-          # Copy DLLs
-          Copy-Item "$vcpkgRoot\installed\x64-windows\bin\*.dll" "$depsDir\lib\" -ErrorAction SilentlyContinue
-
-          echo "PHP_DEPS_DIR=$depsDir" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Read configure flags
-        id: flags
+      - name: Setup PHP SDK
+        shell: cmd
         run: |
-          $common = (Get-Content build-config.json | ConvertFrom-Json).configure.common -join " "
-          $win = (Get-Content build-config.json | ConvertFrom-Json).configure.windows -join " "
-          echo "CONFIGURE_FLAGS=$common $win" >> $env:GITHUB_ENV
-        shell: pwsh
+          if not exist "%PHP_BUILD_CACHE_BASE_DIR%" mkdir "%PHP_BUILD_CACHE_BASE_DIR%"
+          if not exist "%PHP_BUILD_OBJ_DIR%" mkdir "%PHP_BUILD_OBJ_DIR%"
+          git clone --branch %PHP_BUILD_SDK_BRANCH% --depth 1 https://github.com/php/php-sdk-binary-tools.git "%PHP_BUILD_CACHE_SDK_DIR%"
 
       - name: Build PHP
-        run: |
-          call C:\php-sdk\phpsdk-vs17-x64.bat
-
-          cd php-src
-          call buildconf.bat
-
-          call configure.bat ^
-            %CONFIGURE_FLAGS% ^
-            --with-php-build=C:\php-deps ^
-            --with-prefix=C:\php-trueasync
-
-          nmake
         shell: cmd
+        run: |
+          cd php-src
+
+          for /f "usebackq tokens=3" %%i in (`findstr PHP_MAJOR_VERSION main\php_version.h`) do set BRANCH=%%i
+          for /f "usebackq tokens=3" %%i in (`findstr PHP_MINOR_VERSION main\php_version.h`) do set BRANCH=%BRANCH%.%%i
+          if /i "%BRANCH%" equ "8.5" set BRANCH=master
+
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+          set STABILITY=staging
+          set DEPS_DIR=%PHP_BUILD_CACHE_BASE_DIR%\deps-%BRANCH%-%PHP_BUILD_CRT%-%PLATFORM%
+
+          REM Download PHP deps via SDK
+          cmd /c %SDK_RUNNER% -t "phpsdk_deps --update --no-backup --branch %BRANCH% --stability %STABILITY% --deps %DEPS_DIR% --crt %PHP_BUILD_CRT%"
+
+          REM Copy LibUV from vcpkg to deps directory
+          if not exist "%DEPS_DIR%\include\libuv" mkdir "%DEPS_DIR%\include\libuv"
+          if not exist "%DEPS_DIR%\lib" mkdir "%DEPS_DIR%\lib"
+          if not exist "%DEPS_DIR%\bin" mkdir "%DEPS_DIR%\bin"
+          copy "C:\vcpkg\installed\x64-windows\include\uv.h" "%DEPS_DIR%\include\libuv\uv.h"
+          xcopy /E /I /H /Y "C:\vcpkg\installed\x64-windows\include\uv" "%DEPS_DIR%\include\libuv\uv\"
+          copy "C:\vcpkg\installed\x64-windows\lib\uv.lib" "%DEPS_DIR%\lib\libuv.lib"
+          copy "C:\vcpkg\installed\x64-windows\bin\uv.dll" "%DEPS_DIR%\bin\uv.dll"
+
+          REM Build PHP
+          cmd /c %SDK_RUNNER% -t "cd %cd% && call buildconf.bat --force && call configure.bat --enable-snapshot-build --disable-debug-pack --enable-object-out-dir=%PHP_BUILD_OBJ_DIR% --with-php-build=%DEPS_DIR% --enable-async --with-prefix=C:\php-trueasync && nmake /NOLOGO"
 
       - name: Run ext/async tests
-        run: |
-          call C:\php-sdk\phpsdk-vs17-x64.bat
-          cd php-src
-          set PHP_BIN=%cd%\x64\Release_TS\php.exe
-          echo Running ext/async tests...
-          "%PHP_BIN%" run-tests.php --show-diff -p "%PHP_BIN%" ext\async\tests\
-          echo All ext/async tests passed.
         shell: cmd
+        run: |
+          set PHP_BIN=%PHP_BUILD_OBJ_DIR%\Release_TS\php.exe
+          echo Running ext/async tests...
+          "%PHP_BIN%" php-src\run-tests.php --show-diff -p "%PHP_BIN%" php-src\ext\async\tests\
+          echo All ext/async tests passed.
 
       - name: Install PHP
-        run: |
-          call C:\php-sdk\phpsdk-vs17-x64.bat
-          cd php-src
-          nmake install
         shell: cmd
+        run: |
+          cd php-src
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+          cmd /c %SDK_RUNNER% -t "cd %cd% && nmake install"
 
       - name: Build xdebug
+        shell: cmd
         run: |
-          call C:\php-sdk\phpsdk-vs17-x64.bat
+          cd php-src
 
-          set PHP_PREFIX=C:\php-trueasync
+          for /f "usebackq tokens=3" %%i in (`findstr PHP_MAJOR_VERSION main\php_version.h`) do set BRANCH=%%i
+          for /f "usebackq tokens=3" %%i in (`findstr PHP_MINOR_VERSION main\php_version.h`) do set BRANCH=%BRANCH%.%%i
+          if /i "%BRANCH%" equ "8.5" set BRANCH=master
 
-          REM Find phpize.bat - it may be in SDK\ or devel\ depending on the build
-          if exist "%PHP_PREFIX%\SDK\phpize.bat" (
-            set PHPIZE=%PHP_PREFIX%\SDK\phpize.bat
-          ) else if exist "%PHP_PREFIX%\devel\phpize.bat" (
-            set PHPIZE=%PHP_PREFIX%\devel\phpize.bat
-          ) else (
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+          set DEPS_DIR=%PHP_BUILD_CACHE_BASE_DIR%\deps-%BRANCH%-%PHP_BUILD_CRT%-%PLATFORM%
+
+          REM Find phpize in the installed PHP
+          set PHPIZE=C:\php-trueasync\SDK\phpize.bat
+          if not exist "%PHPIZE%" set PHPIZE=C:\php-trueasync\devel\phpize.bat
+          if not exist "%PHPIZE%" (
             echo Looking for phpize.bat...
-            dir /s /b "%PHP_PREFIX%\phpize.bat" 2>nul
+            dir /s /b C:\php-trueasync\phpize.bat 2>nul
             echo ERROR: phpize.bat not found
             exit /b 1
           )
 
-          cd xdebug
-          call "%PHPIZE%"
-          call configure.bat ^
-            --with-php-build=C:\php-deps ^
-            --enable-xdebug
-          nmake
-          nmake install
-        shell: cmd
+          cd %GITHUB_WORKSPACE%\xdebug
+          cmd /c %SDK_RUNNER% -t "cd %cd% && call "%PHPIZE%" && call configure.bat --with-php-build=%DEPS_DIR% --enable-xdebug && nmake /NOLOGO && nmake install"
 
       - name: Package
         run: |
           $version = "${{ needs.config.outputs.version }}"
           $archive = "php-trueasync-${version}-windows-x64.zip"
+
+          # Copy libuv DLL to the install directory
+          $branch = (Select-String -Path php-src\main\php_version.h -Pattern "PHP_MAJOR_VERSION" | Select-Object -First 1).Line -replace '.*\s(\d+)$','$1'
+          $minor = (Select-String -Path php-src\main\php_version.h -Pattern "PHP_MINOR_VERSION" | Select-Object -First 1).Line -replace '.*\s(\d+)$','$1'
+          $depsDir = "C:\build-cache\deps-${branch}.${minor}-vs17-x64"
+          if ("${branch}.${minor}" -eq "8.5") { $depsDir = "C:\build-cache\deps-master-vs17-x64" }
+
+          if (Test-Path "$depsDir\bin\uv.dll") {
+            Copy-Item "$depsDir\bin\uv.dll" "C:\php-trueasync\" -ErrorAction SilentlyContinue
+          }
 
           Compress-Archive -Path "C:\php-trueasync\*" -DestinationPath "${env:GITHUB_WORKSPACE}\${archive}"
           echo "ARCHIVE=${archive}" >> $env:GITHUB_ENV
