@@ -95,6 +95,10 @@ jobs:
             libssl-dev libzip-dev zlib1g-dev \
             libpq-dev libonig-dev libsodium-dev \
             libreadline-dev libbz2-dev \
+            libgmp-dev libicu-dev libxslt1-dev \
+            libjpeg-dev libwebp-dev libfreetype-dev libpng-dev \
+            libtidy-dev libldap2-dev \
+            libgettextpo-dev \
             libuv1-dev
 
       - name: Show libuv version
