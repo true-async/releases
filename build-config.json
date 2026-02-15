@@ -11,7 +11,7 @@
     },
     "xdebug": {
       "repo": "true-async/xdebug",
-      "branch": "master",
+      "branch": "true-async",
       "path": "ext/xdebug"
     }
   },
