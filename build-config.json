@@ -5,7 +5,7 @@
   },
   "extensions": {
     "async": {
-      "repo": "true-async/async",
+      "repo": "true-async/php-async",
       "branch": "main",
       "path": "ext/async"
     },
