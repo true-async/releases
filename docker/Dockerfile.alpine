@@ -138,11 +138,12 @@ RUN apk add --no-cache \
     readline libbz2 \
     gmp icu-libs libxslt \
     libjpeg-turbo libwebp freetype libpng \
-    tidyhtml-libs libldap \
+    tidyhtml libldap \
     argon2-libs libffi \
     net-snmp-libs enchant2 \
-    gdbm lmdb-libs \
+    gdbm lmdb \
     libuv libcurl \
+    libstdc++ libgcc \
     ca-certificates \
     && addgroup -g 82 -S www-data 2>/dev/null || true \
     && adduser -u 82 -D -S -G www-data www-data 2>/dev/null || true

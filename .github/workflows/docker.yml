@@ -89,6 +89,7 @@ jobs:
             ASYNC_BRANCH=${{ needs.config.outputs.async_branch }}
             XDEBUG_BRANCH=${{ needs.config.outputs.xdebug_branch }}
           push: ${{ !inputs.test_only }}
+          load: true
           tags: |
             trueasync/php-true-async:${{ matrix.tag }}
           cache-from: type=gha,scope=${{ matrix.tag }}
