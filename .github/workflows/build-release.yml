@@ -48,135 +48,149 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # Linux x64 build
+  # Linux x64 build (disabled — binary is not portable across distros)
   # ---------------------------------------------------------------------------
-  build-linux:
-    needs: config
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Checkout php-src
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ needs.config.outputs.php_src_repo }}
-          ref: ${{ needs.config.outputs.php_src_branch }}
-          path: php-src
-
-      - name: Checkout ext/async
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ needs.config.outputs.async_repo }}
-          ref: ${{ needs.config.outputs.async_branch }}
-          path: php-src/ext/async
-
-      - name: Checkout xdebug
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ needs.config.outputs.xdebug_repo }}
-          ref: ${{ needs.config.outputs.xdebug_branch }}
-          path: xdebug
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            autoconf automake bison re2c pkg-config \
-            build-essential curl cmake ninja-build \
-            libxml2-dev libsqlite3-dev libcurl4-openssl-dev \
-            libssl-dev libzip-dev zlib1g-dev \
-            libpq-dev libonig-dev libsodium-dev \
-            libreadline-dev libbz2-dev \
-            libgmp-dev libicu-dev libxslt1-dev \
-            libjpeg-dev libwebp-dev libfreetype6-dev libpng-dev \
-            libtidy-dev libldap2-dev \
-            libgettextpo-dev libargon2-dev
-
-          # Build libuv 1.48.0 from source
-          wget https://github.com/libuv/libuv/archive/v1.48.0.tar.gz
-          tar -xzf v1.48.0.tar.gz
-          cd libuv-1.48.0
-          mkdir build && cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-          ninja
-          sudo ninja install
-          sudo ldconfig
-          cd ../..
-
-          # Build libcurl 8.5.0 from source (need >= 7.87.0 for TrueAsync)
-          wget https://github.com/curl/curl/releases/download/curl-8_5_0/curl-8.5.0.tar.gz
-          tar -xzf curl-8.5.0.tar.gz
-          cd curl-8.5.0
-          ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static
-          make -j$(nproc)
-          sudo make install
-          sudo ldconfig
-
-      - name: Build PHP
-        working-directory: php-src
-        run: |
-          COMMON_FLAGS=$(jq -r '.configure.common | join(" ")' ../build-config.json)
-          LINUX_FLAGS=$(jq -r '.configure.linux | join(" ")' ../build-config.json)
-
-          ./buildconf --force
-          ./configure \
-            --prefix=/opt/php-trueasync \
-            $COMMON_FLAGS \
-            $LINUX_FLAGS
-
-          make -j$(nproc)
-
-      - name: Run ext/async tests
-        working-directory: php-src
-        run: |
-          PHP_BIN="$(pwd)/sapi/cli/php"
-          echo "Running ext/async tests..."
-          "$PHP_BIN" run-tests.php --show-diff -p "$PHP_BIN" ext/async/tests/
-          echo "All ext/async tests passed."
-
-      - name: Install PHP
-        working-directory: php-src
-        run: |
-          sudo make install
-
-      - name: Build xdebug
-        working-directory: xdebug
-        run: |
-          /opt/php-trueasync/bin/phpize
-          ./configure --with-php-config=/opt/php-trueasync/bin/php-config
-          make -j$(nproc)
-          sudo make install
-
-      - name: Verify build
-        run: |
-          /opt/php-trueasync/bin/php -v
-          /opt/php-trueasync/bin/php -m
-
-      - name: Package
-        run: |
-          VERSION="${{ needs.config.outputs.version }}"
-          ARCHIVE="php-trueasync-${VERSION}-linux-x64.tar.gz"
-
-          cd /opt
-          tar czf "${GITHUB_WORKSPACE}/${ARCHIVE}" php-trueasync/
-          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
-
-      - name: Upload artifact
-        if: ${{ !inputs.test_only }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-x64
-          path: ${{ env.ARCHIVE }}
-          retention-days: 5
+  # build-linux:
+  #   needs: config
+  #   runs-on: ubuntu-22.04
+  #   timeout-minutes: 60
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Checkout php-src
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: ${{ needs.config.outputs.php_src_repo }}
+  #         ref: ${{ needs.config.outputs.php_src_branch }}
+  #         path: php-src
+  #
+  #     - name: Checkout ext/async
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: ${{ needs.config.outputs.async_repo }}
+  #         ref: ${{ needs.config.outputs.async_branch }}
+  #         path: php-src/ext/async
+  #
+  #     - name: Checkout xdebug
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: ${{ needs.config.outputs.xdebug_repo }}
+  #         ref: ${{ needs.config.outputs.xdebug_branch }}
+  #         path: xdebug
+  #
+  #     - name: Install dependencies
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y \
+  #           autoconf automake bison re2c pkg-config \
+  #           build-essential curl cmake ninja-build \
+  #           libxml2-dev libsqlite3-dev libcurl4-openssl-dev \
+  #           libssl-dev libzip-dev zlib1g-dev \
+  #           libpq-dev libonig-dev libsodium-dev \
+  #           libreadline-dev libbz2-dev \
+  #           libgmp-dev libicu-dev libxslt1-dev \
+  #           libjpeg-dev libwebp-dev libfreetype6-dev libpng-dev \
+  #           libtidy-dev libldap2-dev \
+  #           libgettextpo-dev libargon2-dev
+  #
+  #         # Build libuv 1.48.0 from source
+  #         wget https://github.com/libuv/libuv/archive/v1.48.0.tar.gz
+  #         tar -xzf v1.48.0.tar.gz
+  #         cd libuv-1.48.0
+  #         mkdir build && cd build
+  #         cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+  #         ninja
+  #         sudo ninja install
+  #         sudo ldconfig
+  #         cd ../..
+  #
+  #         # Build libcurl 8.5.0 from source (need >= 7.87.0 for TrueAsync)
+  #         wget https://github.com/curl/curl/releases/download/curl-8_5_0/curl-8.5.0.tar.gz
+  #         tar -xzf curl-8.5.0.tar.gz
+  #         cd curl-8.5.0
+  #         ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static
+  #         make -j$(nproc)
+  #         sudo make install
+  #         sudo ldconfig
+  #
+  #     - name: Build PHP
+  #       working-directory: php-src
+  #       run: |
+  #         COMMON_FLAGS=$(jq -r '.configure.common | join(" ")' ../build-config.json)
+  #         LINUX_FLAGS=$(jq -r '.configure.linux | join(" ")' ../build-config.json)
+  #
+  #         ./buildconf --force
+  #         ./configure \
+  #           --prefix=/opt/php-trueasync \
+  #           $COMMON_FLAGS \
+  #           $LINUX_FLAGS
+  #
+  #         make -j$(nproc)
+  #
+  #     - name: Run ext/async tests
+  #       working-directory: php-src
+  #       run: |
+  #         PHP_BIN="$(pwd)/sapi/cli/php"
+  #         echo "Running ext/async tests..."
+  #         "$PHP_BIN" run-tests.php --show-diff -p "$PHP_BIN" ext/async/tests/
+  #         echo "All ext/async tests passed."
+  #
+  #     - name: Install PHP
+  #       working-directory: php-src
+  #       run: |
+  #         sudo make install
+  #
+  #     - name: Build xdebug
+  #       working-directory: xdebug
+  #       run: |
+  #         /opt/php-trueasync/bin/phpize
+  #         ./configure --with-php-config=/opt/php-trueasync/bin/php-config
+  #         make -j$(nproc)
+  #         sudo make install
+  #
+  #     - name: Verify build
+  #       run: |
+  #         /opt/php-trueasync/bin/php -v
+  #         /opt/php-trueasync/bin/php -m
+  #
+  #     - name: Package
+  #       run: |
+  #         VERSION="${{ needs.config.outputs.version }}"
+  #         ARCHIVE="php-trueasync-${VERSION}-linux-x64.tar.gz"
+  #
+  #         cd /opt
+  #         tar czf "${GITHUB_WORKSPACE}/${ARCHIVE}" php-trueasync/
+  #         echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+  #
+  #     - name: Upload artifact
+  #       if: ${{ !inputs.test_only }}
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: linux-x64
+  #         path: ${{ env.ARCHIVE }}
+  #         retention-days: 5
 
   # ---------------------------------------------------------------------------
-  # Windows x64 build
+  # Windows x64 build (Release + Debug via matrix)
   # ---------------------------------------------------------------------------
   build-windows:
     needs: config
     runs-on: windows-2022
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build_type: Release
+            output_dir: Release_TS
+            configure_flags: "--enable-snapshot-build --disable-debug-pack"
+            install_prefix: "C:\\php-trueasync"
+            artifact_suffix: ""
+          - build_type: Debug
+            output_dir: Debug_TS
+            configure_flags: "--enable-snapshot-build --enable-debug"
+            install_prefix: "C:\\php-trueasync-debug"
+            artifact_suffix: "-debug"
     env:
       PHP_BUILD_CACHE_BASE_DIR: C:\build-cache
       PHP_BUILD_OBJ_DIR: C:\obj
@@ -269,13 +283,15 @@ jobs:
       - name: Create build task script
         shell: pwsh
         run: |
+          $prefix = "${{ matrix.install_prefix }}"
+          $flags = "${{ matrix.configure_flags }}"
           @(
             "@echo off",
             "cd /d $($env:GITHUB_WORKSPACE)\php-src",
             "if %errorlevel% neq 0 exit /b 3",
             "call buildconf.bat --force",
             "if %errorlevel% neq 0 exit /b 3",
-            "call configure.bat --enable-snapshot-build --disable-debug-pack --enable-object-out-dir=%PHP_BUILD_OBJ_DIR% --with-php-build=%DEPS_DIR% --enable-async --with-prefix=C:\php-trueasync",
+            "call configure.bat $flags --enable-object-out-dir=%PHP_BUILD_OBJ_DIR% --with-php-build=%DEPS_DIR% --enable-async --with-prefix=$prefix",
             "if %errorlevel% neq 0 exit /b 3",
             "nmake /NOLOGO",
             "if %errorlevel% neq 0 exit /b 3",
@@ -292,10 +308,10 @@ jobs:
       - name: Run ext/async tests
         shell: cmd
         run: |
-          set PHP_BIN=%PHP_BUILD_OBJ_DIR%\Release_TS\php.exe
+          set PHP_BIN=%PHP_BUILD_OBJ_DIR%\${{ matrix.output_dir }}\php.exe
 
           REM Copy dependency DLLs next to php.exe so it can find them
-          copy "%DEPS_DIR%\bin\*.dll" "%PHP_BUILD_OBJ_DIR%\Release_TS\"
+          copy "%DEPS_DIR%\bin\*.dll" "%PHP_BUILD_OBJ_DIR%\${{ matrix.output_dir }}\"
 
           echo Running ext/async tests...
           "%PHP_BIN%" php-src\run-tests.php --show-diff -p "%PHP_BIN%" php-src\ext\async\tests\
@@ -324,11 +340,12 @@ jobs:
       - name: Create xdebug build task script
         shell: pwsh
         run: |
+          $installPrefix = "${{ matrix.install_prefix }}"
           # Find phpize.bat
-          $phpize = "C:\php-trueasync\SDK\phpize.bat"
-          if (!(Test-Path $phpize)) { $phpize = "C:\php-trueasync\devel\phpize.bat" }
+          $phpize = "$installPrefix\SDK\phpize.bat"
+          if (!(Test-Path $phpize)) { $phpize = "$installPrefix\devel\phpize.bat" }
           if (!(Test-Path $phpize)) {
-            $found = Get-ChildItem -Path "C:\php-trueasync" -Recurse -Filter "phpize.bat" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found = Get-ChildItem -Path "$installPrefix" -Recurse -Filter "phpize.bat" -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) { $phpize = $found.FullName }
             else { Write-Error "phpize.bat not found"; exit 1 }
           }
@@ -357,14 +374,16 @@ jobs:
       - name: Package
         run: |
           $version = "${{ needs.config.outputs.version }}"
-          $archive = "php-trueasync-${version}-windows-x64.zip"
+          $suffix = "${{ matrix.artifact_suffix }}"
+          $installPrefix = "${{ matrix.install_prefix }}"
+          $archive = "php-trueasync-${version}-windows-x64${suffix}.zip"
 
           # Copy libuv DLL to the install directory
           if (Test-Path "$env:DEPS_DIR\bin\uv.dll") {
-            Copy-Item "$env:DEPS_DIR\bin\uv.dll" "C:\php-trueasync\" -ErrorAction SilentlyContinue
+            Copy-Item "$env:DEPS_DIR\bin\uv.dll" "${installPrefix}\" -ErrorAction SilentlyContinue
           }
 
-          Compress-Archive -Path "C:\php-trueasync\*" -DestinationPath "${env:GITHUB_WORKSPACE}\${archive}"
+          Compress-Archive -Path "${installPrefix}\*" -DestinationPath "${env:GITHUB_WORKSPACE}\${archive}"
           echo "ARCHIVE=${archive}" >> $env:GITHUB_ENV
         shell: pwsh
 
@@ -372,7 +391,7 @@ jobs:
         if: ${{ !inputs.test_only }}
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x64
+          name: windows-x64${{ matrix.artifact_suffix }}
           path: ${{ env.ARCHIVE }}
           retention-days: 5
 
@@ -381,7 +400,7 @@ jobs:
   # ---------------------------------------------------------------------------
   release:
     if: ${{ !inputs.test_only }}
-    needs: [config, build-linux, build-windows]
+    needs: [config, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -416,12 +435,11 @@ jobs:
             - **async** — TrueAsync coroutine engine
             - **xdebug** — Debugger and profiler
 
-            ### Installation
+            ### Downloads
+            - **Release** build — for general use
+            - **Debug** build — for PHP/extension development (includes debug symbols and assertions)
 
-            **Linux:**
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/install.sh | bash
-            ```
+            ### Installation
 
             **Windows (PowerShell):**
             ```powershell
@@ -429,9 +447,9 @@ jobs:
             ```
 
             ### Verify
-            ```bash
+            ```powershell
             php -v
-            php -m | grep async
+            php -m | findstr async
             ```
 
             ### Checksums

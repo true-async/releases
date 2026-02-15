@@ -4,11 +4,6 @@ Pre-built PHP binaries with native async/coroutine support via the TrueAsync ext
 
 ## Quick Install
 
-**Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/install.sh | bash
-```
-
 **Windows (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/true-async/releases/main/installer/install.ps1 | iex
@@ -17,16 +12,18 @@ irm https://raw.githubusercontent.com/true-async/releases/main/installer/install
 ## Manual Install
 
 1. Go to [Releases](https://github.com/true-async/releases/releases)
-2. Download the archive for your platform
+2. Download the archive for your platform:
+   - **Release** — for general use
+   - **Debug** — for PHP/extension development (includes debug symbols and assertions)
 3. Verify the SHA256 checksum from `sha256sums.txt`
 4. Extract to your preferred location
-5. Add the `bin/` directory to your PATH
+5. Add the directory to your PATH
 
 ## Verify Installation
 
-```bash
+```powershell
 php -v
-php -m | grep async
+php -m | findstr async
 ```
 
 ## What's Included
@@ -36,14 +33,13 @@ php -m | grep async
 | **async** | TrueAsync coroutine engine with libuv reactor |
 | **xdebug** | Debugger and profiler |
 
-Standard PHP extensions: curl, mbstring, openssl, pdo, pdo_mysql, pdo_pgsql, pdo_sqlite, pgsql, sockets, zip, and more.
+Standard PHP extensions: curl, mbstring, openssl, pdo, pdo_mysql, pdo_pgsql, pdo_sqlite, pgsql, sockets, and more.
 
 ## Platforms
 
-| Platform | Architecture | Status |
-|----------|-------------|--------|
-| Linux    | x64         | ✅ |
-| Windows  | x64         | ✅ |
+| Platform | Architecture | Build Types | Status |
+|----------|-------------|-------------|--------|
+| Windows  | x64         | Release, Debug | ✅ |
 
 ## Configuration
 
