@@ -11,6 +11,7 @@
 .NOTES
     Set $env:INSTALL_DIR to customize installation path.
     Set $env:VERSION to install a specific version (e.g., "v0.1.0").
+    Set $env:NO_PATH = "true" to skip adding to PATH.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +21,7 @@ $Repo = "true-async/releases"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "$env:LOCALAPPDATA\php-trueasync" }
 $Version = if ($env:VERSION) { $env:VERSION } else { "latest" }
 $SkipVerify = $env:SKIP_VERIFY -eq "true"
+$NoPath = $env:NO_PATH -eq "true"
 $VersionFile = ".trueasync-version"
 $Command = if ($env:TRUEASYNC_CMD) { $env:TRUEASYNC_CMD } else { "install" }
 
@@ -204,12 +206,16 @@ function Do-Install {
         Install-ManagementScript
 
         # Add to PATH
-        $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-        if ($currentPath -notlike "*php-trueasync*") {
-            [Environment]::SetEnvironmentVariable("Path", "$InstallDir;$currentPath", "User")
-            $env:Path = "$InstallDir;$env:Path"
-            Write-Ok "Added $InstallDir to user PATH"
-            Write-Warn "Restart your terminal for PATH changes to take effect"
+        if (-not $NoPath) {
+            $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+            if ($currentPath -notlike "*php-trueasync*") {
+                [Environment]::SetEnvironmentVariable("Path", "$InstallDir;$currentPath", "User")
+                $env:Path = "$InstallDir;$env:Path"
+                Write-Ok "Added $InstallDir to user PATH"
+                Write-Warn "Restart your terminal for PATH changes to take effect"
+            }
+        } else {
+            Write-Info "Skipping PATH modification (NO_PATH=true)"
         }
 
         # Verify
