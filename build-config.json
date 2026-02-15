@@ -22,7 +22,6 @@
     "common": [
       "--enable-zts",
       "--enable-async",
-      "--enable-xdebug",
       "--enable-phpdbg",
       "--enable-bcmath",
       "--enable-calendar",

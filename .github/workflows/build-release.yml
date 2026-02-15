@@ -78,12 +78,12 @@ jobs:
           ref: ${{ needs.config.outputs.async_branch }}
           path: php-src/ext/async
 
-      - name: Checkout ext/xdebug
+      - name: Checkout xdebug
         uses: actions/checkout@v4
         with:
           repository: ${{ needs.config.outputs.xdebug_repo }}
           ref: ${{ needs.config.outputs.xdebug_branch }}
-          path: php-src/ext/xdebug
+          path: xdebug
 
       - name: Install dependencies
         run: |
@@ -105,16 +105,6 @@ jobs:
         run: |
           LIBUV_VER=$(pkg-config --modversion libuv 2>/dev/null || echo "unknown")
           echo "libuv version: $LIBUV_VER"
-
-      - name: Prepare extension build files
-        working-directory: php-src
-        run: |
-          # Xdebug config.m4 uses m4_include([m4/pkg.m4]) with paths relative
-          # to autoconf CWD (php-src root). Create m4/ dir in root with these files.
-          if [ -d ext/xdebug/m4 ]; then
-            mkdir -p m4
-            cp ext/xdebug/m4/*.m4 m4/
-          fi
 
       - name: Build PHP
         working-directory: php-src
@@ -142,6 +132,15 @@ jobs:
       - name: Install to staging directory
         working-directory: php-src
         run: |
+          make install INSTALL_ROOT="${GITHUB_WORKSPACE}/staging"
+
+      - name: Build xdebug
+        working-directory: xdebug
+        run: |
+          PHP_PREFIX="${GITHUB_WORKSPACE}/staging/opt/php-trueasync"
+          "${PHP_PREFIX}/bin/phpize"
+          ./configure --with-php-config="${PHP_PREFIX}/bin/php-config"
+          make -j$(nproc)
           make install INSTALL_ROOT="${GITHUB_WORKSPACE}/staging"
 
       - name: Verify build
@@ -189,12 +188,12 @@ jobs:
           ref: ${{ needs.config.outputs.async_branch }}
           path: php-src/ext/async
 
-      - name: Checkout ext/xdebug
+      - name: Checkout xdebug
         uses: actions/checkout@v4
         with:
           repository: ${{ needs.config.outputs.xdebug_repo }}
           ref: ${{ needs.config.outputs.xdebug_branch }}
-          path: php-src/ext/xdebug
+          path: xdebug
 
       - name: Setup PHP SDK
         run: |
@@ -234,6 +233,14 @@ jobs:
           echo "PHP_DEPS_DIR=$depsDir" >> $env:GITHUB_ENV
         shell: pwsh
 
+      - name: Read configure flags
+        id: flags
+        run: |
+          $common = (Get-Content build-config.json | ConvertFrom-Json).configure.common -join " "
+          $win = (Get-Content build-config.json | ConvertFrom-Json).configure.windows -join " "
+          echo "CONFIGURE_FLAGS=$common $win" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: Build PHP
         run: |
           call C:\php-sdk\phpsdk-vs17-x64.bat
@@ -242,21 +249,7 @@ jobs:
           call buildconf.bat
 
           call configure.bat ^
-            --enable-zts ^
-            --enable-async ^
-            --enable-xdebug ^
-            --enable-phpdbg ^
-            --enable-mbstring ^
-            --enable-sockets ^
-            --enable-pdo ^
-            --enable-ftp ^
-            --enable-shmop ^
-            --with-curl ^
-            --with-sqlite3 ^
-            --with-pdo-sqlite ^
-            --with-pdo-mysql ^
-            --with-openssl ^
-            --enable-debug-pack ^
+            %CONFIGURE_FLAGS% ^
             --with-php-build=C:\php-deps ^
             --with-prefix=C:\php-trueasync
 
@@ -273,11 +266,42 @@ jobs:
           echo All ext/async tests passed.
         shell: cmd
 
-      - name: Install and package
+      - name: Install PHP
         run: |
+          call C:\php-sdk\phpsdk-vs17-x64.bat
           cd php-src
           nmake install
+        shell: cmd
 
+      - name: Build xdebug
+        run: |
+          call C:\php-sdk\phpsdk-vs17-x64.bat
+
+          set PHP_PREFIX=C:\php-trueasync
+
+          REM Find phpize.bat - it may be in SDK\ or devel\ depending on the build
+          if exist "%PHP_PREFIX%\SDK\phpize.bat" (
+            set PHPIZE=%PHP_PREFIX%\SDK\phpize.bat
+          ) else if exist "%PHP_PREFIX%\devel\phpize.bat" (
+            set PHPIZE=%PHP_PREFIX%\devel\phpize.bat
+          ) else (
+            echo Looking for phpize.bat...
+            dir /s /b "%PHP_PREFIX%\phpize.bat" 2>nul
+            echo ERROR: phpize.bat not found
+            exit /b 1
+          )
+
+          cd xdebug
+          call "%PHPIZE%"
+          call configure.bat ^
+            --with-php-build=C:\php-deps ^
+            --enable-xdebug
+          nmake
+          nmake install
+        shell: cmd
+
+      - name: Package
+        run: |
           $version = "${{ needs.config.outputs.version }}"
           $archive = "php-trueasync-${version}-windows-x64.zip"
 
