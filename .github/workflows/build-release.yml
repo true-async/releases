@@ -293,8 +293,13 @@ jobs:
         shell: cmd
         run: |
           set PHP_BIN=%PHP_BUILD_OBJ_DIR%\Release_TS\php.exe
+
+          REM Copy dependency DLLs next to php.exe so it can find them
+          copy "%DEPS_DIR%\bin\*.dll" "%PHP_BUILD_OBJ_DIR%\Release_TS\"
+
           echo Running ext/async tests...
           "%PHP_BIN%" php-src\run-tests.php --show-diff -p "%PHP_BIN%" php-src\ext\async\tests\
+          if %errorlevel% neq 0 exit /b %errorlevel%
           echo All ext/async tests passed.
 
       - name: Create install task script
