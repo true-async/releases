@@ -1,0 +1,333 @@
+name: Build & Release TrueAsync PHP
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  PHP_SRC_REPO: true-async/php-src
+  PHP_SRC_BRANCH: true-async
+  ASYNC_EXT_REPO: true-async/async
+  ASYNC_EXT_BRANCH: main
+  XDEBUG_REPO: true-async/xdebug
+  XDEBUG_BRANCH: master
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Read build configuration
+  # ---------------------------------------------------------------------------
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      php_src_repo: ${{ steps.read.outputs.php_src_repo }}
+      php_src_branch: ${{ steps.read.outputs.php_src_branch }}
+      async_repo: ${{ steps.read.outputs.async_repo }}
+      async_branch: ${{ steps.read.outputs.async_branch }}
+      xdebug_repo: ${{ steps.read.outputs.xdebug_repo }}
+      xdebug_branch: ${{ steps.read.outputs.xdebug_branch }}
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read build-config.json
+        id: read
+        run: |
+          echo "php_src_repo=$(jq -r '.php_src.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "async_repo=$(jq -r '.extensions.async.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "xdebug_repo=$(jq -r '.extensions.xdebug.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "xdebug_branch=$(jq -r '.extensions.xdebug.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Linux x64 build
+  # ---------------------------------------------------------------------------
+  build-linux:
+    needs: config
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout php-src
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.php_src_repo }}
+          ref: ${{ needs.config.outputs.php_src_branch }}
+          path: php-src
+
+      - name: Checkout ext/async
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.async_repo }}
+          ref: ${{ needs.config.outputs.async_branch }}
+          path: php-src/ext/async
+
+      - name: Checkout ext/xdebug
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.xdebug_repo }}
+          ref: ${{ needs.config.outputs.xdebug_branch }}
+          path: php-src/ext/xdebug
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake bison re2c pkg-config \
+            gcc g++ make \
+            libxml2-dev libsqlite3-dev libcurl4-openssl-dev \
+            libssl-dev libzip-dev zlib1g-dev \
+            libpq-dev libonig-dev libsodium-dev \
+            libreadline-dev libbz2-dev \
+            libuv1-dev
+
+      - name: Verify libuv version
+        run: |
+          LIBUV_VER=$(pkg-config --modversion libuv 2>/dev/null || echo "unknown")
+          echo "libuv version: $LIBUV_VER"
+          MIN_VER=$(jq -r '.requirements.libuv_min_version' build-config.json)
+          echo "Required minimum: $MIN_VER"
+
+      - name: Build PHP
+        working-directory: php-src
+        run: |
+          # Read configure flags from config
+          COMMON_FLAGS=$(jq -r '.configure.common | join(" ")' ../build-config.json)
+          LINUX_FLAGS=$(jq -r '.configure.linux | join(" ")' ../build-config.json)
+
+          ./buildconf --force
+          ./configure \
+            --prefix=/opt/php-trueasync \
+            $COMMON_FLAGS \
+            $LINUX_FLAGS
+
+          make -j$(nproc)
+
+      - name: Run ext/async tests
+        working-directory: php-src
+        run: |
+          PHP_BIN="$(pwd)/sapi/cli/php"
+          echo "Running ext/async tests..."
+          "$PHP_BIN" run-tests.php --show-diff -p "$PHP_BIN" ext/async/tests/
+          echo "All ext/async tests passed."
+
+      - name: Install to staging directory
+        working-directory: php-src
+        run: |
+          make install INSTALL_ROOT="${GITHUB_WORKSPACE}/staging"
+
+      - name: Verify build
+        run: |
+          "${GITHUB_WORKSPACE}/staging/opt/php-trueasync/bin/php" -v
+          "${GITHUB_WORKSPACE}/staging/opt/php-trueasync/bin/php" -m
+
+      - name: Package
+        run: |
+          VERSION="${{ needs.config.outputs.version }}"
+          ARCHIVE="php-trueasync-${VERSION}-linux-x64.tar.gz"
+
+          cd staging/opt
+          tar czf "${GITHUB_WORKSPACE}/${ARCHIVE}" php-trueasync/
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: ${{ env.ARCHIVE }}
+          retention-days: 5
+
+  # ---------------------------------------------------------------------------
+  # Windows x64 build
+  # ---------------------------------------------------------------------------
+  build-windows:
+    needs: config
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout php-src
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.php_src_repo }}
+          ref: ${{ needs.config.outputs.php_src_branch }}
+          path: php-src
+
+      - name: Checkout ext/async
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.async_repo }}
+          ref: ${{ needs.config.outputs.async_branch }}
+          path: php-src/ext/async
+
+      - name: Checkout ext/xdebug
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.xdebug_repo }}
+          ref: ${{ needs.config.outputs.xdebug_branch }}
+          path: php-src/ext/xdebug
+
+      - name: Setup PHP SDK
+        run: |
+          git clone --depth=1 https://github.com/php/php-sdk-binary-tools.git C:\php-sdk
+        shell: cmd
+
+      - name: Install libuv via vcpkg
+        run: |
+          vcpkg install libuv:x64-windows
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Setup libuv for PHP build
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          $depsDir = "C:\php-deps"
+          New-Item -ItemType Directory -Force -Path "$depsDir\include", "$depsDir\lib"
+
+          # Copy libuv headers
+          Copy-Item -Recurse "$vcpkgRoot\installed\x64-windows\include\*" "$depsDir\include\"
+
+          # Create libuv subdirectory expected by ext/async config.w32
+          if (-not (Test-Path "$depsDir\include\libuv")) {
+            New-Item -ItemType Directory -Force -Path "$depsDir\include\libuv"
+            Copy-Item "$depsDir\include\uv.h" "$depsDir\include\libuv\"
+            if (Test-Path "$depsDir\include\uv") {
+              Copy-Item -Recurse "$depsDir\include\uv" "$depsDir\include\libuv\"
+            }
+          }
+
+          # Copy libuv library
+          Copy-Item "$vcpkgRoot\installed\x64-windows\lib\uv.lib" "$depsDir\lib\libuv.lib"
+
+          # Copy DLLs
+          Copy-Item "$vcpkgRoot\installed\x64-windows\bin\*.dll" "$depsDir\lib\" -ErrorAction SilentlyContinue
+
+          echo "PHP_DEPS_DIR=$depsDir" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Build PHP
+        run: |
+          call C:\php-sdk\phpsdk-vs17-x64.bat
+
+          cd php-src
+          call buildconf.bat
+
+          call configure.bat ^
+            --enable-zts ^
+            --enable-async ^
+            --enable-xdebug ^
+            --enable-phpdbg ^
+            --enable-mbstring ^
+            --enable-sockets ^
+            --enable-pdo ^
+            --enable-ftp ^
+            --enable-shmop ^
+            --with-curl ^
+            --with-sqlite3 ^
+            --with-pdo-sqlite ^
+            --with-pdo-mysql ^
+            --with-openssl ^
+            --enable-debug-pack ^
+            --with-php-build=C:\php-deps ^
+            --with-prefix=C:\php-trueasync
+
+          nmake
+        shell: cmd
+
+      - name: Run ext/async tests
+        run: |
+          call C:\php-sdk\phpsdk-vs17-x64.bat
+          cd php-src
+          set PHP_BIN=%cd%\x64\Release_TS\php.exe
+          echo Running ext/async tests...
+          "%PHP_BIN%" run-tests.php --show-diff -p "%PHP_BIN%" ext\async\tests\
+          echo All ext/async tests passed.
+        shell: cmd
+
+      - name: Install and package
+        run: |
+          cd php-src
+          nmake install
+
+          $version = "${{ needs.config.outputs.version }}"
+          $archive = "php-trueasync-${version}-windows-x64.zip"
+
+          Compress-Archive -Path "C:\php-trueasync\*" -DestinationPath "${env:GITHUB_WORKSPACE}\${archive}"
+          echo "ARCHIVE=${archive}" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: ${{ env.ARCHIVE }}
+          retention-days: 5
+
+  # ---------------------------------------------------------------------------
+  # Create GitHub Release with checksums
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [config, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release-files/ \;
+          ls -la release-files/
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd release-files
+          sha256sum * > sha256sums.txt
+          cat sha256sums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "TrueAsync PHP ${{ needs.config.outputs.version }}"
+          body: |
+            ## TrueAsync PHP ${{ needs.config.outputs.version }}
+
+            PHP with built-in TrueAsync support and Xdebug.
+
+            ### Included extensions
+            - **async** — TrueAsync coroutine engine
+            - **xdebug** — Debugger and profiler
+
+            ### Installation
+
+            **Linux:**
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/install.sh | bash
+            ```
+
+            **Windows (PowerShell):**
+            ```powershell
+            irm https://raw.githubusercontent.com/true-async/releases/main/installer/install.ps1 | iex
+            ```
+
+            ### Verify
+            ```bash
+            php -v
+            php -m | grep async
+            ```
+
+            ### Checksums
+            See `sha256sums.txt` for SHA256 checksums of all files.
+          files: release-files/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

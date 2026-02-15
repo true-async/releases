@@ -1,0 +1,50 @@
+{
+  "php_src": {
+    "repo": "true-async/php-src",
+    "branch": "true-async"
+  },
+  "extensions": {
+    "async": {
+      "repo": "true-async/async",
+      "branch": "main",
+      "path": "ext/async"
+    },
+    "xdebug": {
+      "repo": "true-async/xdebug",
+      "branch": "master",
+      "path": "ext/xdebug"
+    }
+  },
+  "requirements": {
+    "libuv_min_version": "1.45.0"
+  },
+  "configure": {
+    "common": [
+      "--enable-zts",
+      "--enable-async",
+      "--enable-xdebug",
+      "--enable-phpdbg",
+      "--enable-mbstring",
+      "--enable-sockets",
+      "--enable-pdo",
+      "--enable-ftp",
+      "--enable-shmop",
+      "--with-curl",
+      "--with-sqlite3",
+      "--with-pdo-sqlite",
+      "--with-pdo-mysql",
+      "--with-pdo-pgsql",
+      "--with-pgsql",
+      "--with-openssl",
+      "--with-zlib"
+    ],
+    "linux": [
+      "--with-zip",
+      "--with-sodium",
+      "--with-readline"
+    ],
+    "windows": [
+      "--enable-debug-pack"
+    ]
+  }
+}
