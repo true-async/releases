@@ -11,11 +11,13 @@ set -euo pipefail
 #   INSTALL_DIR   — Installation directory (default: $HOME/.php-trueasync)
 #   VERSION       — Specific version to install (default: latest)
 #   SKIP_VERIFY   — Skip SHA256 verification (default: false)
+#   NO_PATH       — Skip adding to PATH (default: false)
 
 REPO="true-async/releases"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.php-trueasync}"
 VERSION="${VERSION:-latest}"
 SKIP_VERIFY="${SKIP_VERIFY:-false}"
+NO_PATH="${NO_PATH:-false}"
 VERSION_FILE=".trueasync-version"
 
 # Colors
@@ -177,25 +179,30 @@ do_install() {
 
     ok "Installed to ${INSTALL_DIR}"
 
-    # Setup PATH hint
+    # Setup PATH and management script
     local bin_dir="${INSTALL_DIR}/bin"
     if [[ -d "$bin_dir" ]]; then
         # Install the management script
         install_management_script "$bin_dir"
 
-        local shell_rc=""
-        if [[ -n "${BASH_VERSION:-}" ]]; then
-            shell_rc="$HOME/.bashrc"
-        elif [[ -n "${ZSH_VERSION:-}" ]]; then
-            shell_rc="$HOME/.zshrc"
-        fi
+        if [[ "$NO_PATH" != "true" ]]; then
+            local shell_rc=""
+            if [[ -n "${BASH_VERSION:-}" ]]; then
+                shell_rc="$HOME/.bashrc"
+            elif [[ -n "${ZSH_VERSION:-}" ]]; then
+                shell_rc="$HOME/.zshrc"
+            fi
 
-        if [[ -n "$shell_rc" ]] && ! grep -q "php-trueasync" "$shell_rc" 2>/dev/null; then
-            echo "" >> "$shell_rc"
-            echo "# TrueAsync PHP" >> "$shell_rc"
-            echo "export PATH=\"${bin_dir}:\$PATH\"" >> "$shell_rc"
-            ok "Added ${bin_dir} to PATH in ${shell_rc}"
-            warn "Run 'source ${shell_rc}' or open a new terminal to use php"
+            if [[ -n "$shell_rc" ]] && ! grep -q "php-trueasync" "$shell_rc" 2>/dev/null; then
+                echo "" >> "$shell_rc"
+                echo "# TrueAsync PHP" >> "$shell_rc"
+                echo "export PATH=\"${bin_dir}:\$PATH\"" >> "$shell_rc"
+                ok "Added ${bin_dir} to PATH in ${shell_rc}"
+                warn "Run 'source ${shell_rc}' or open a new terminal to use php"
+            fi
+        else
+            info "Skipping PATH modification (NO_PATH=true)"
+            info "Binary location: ${bin_dir}/php"
         fi
     fi
 
