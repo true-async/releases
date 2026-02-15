@@ -16,7 +16,7 @@
     }
   },
   "requirements": {
-    "libuv_min_version": "1.45.0"
+    "libuv": "latest"
   },
   "configure": {
     "common": [

@@ -97,12 +97,10 @@ jobs:
             libreadline-dev libbz2-dev \
             libuv1-dev
 
-      - name: Verify libuv version
+      - name: Show libuv version
         run: |
           LIBUV_VER=$(pkg-config --modversion libuv 2>/dev/null || echo "unknown")
           echo "libuv version: $LIBUV_VER"
-          MIN_VER=$(jq -r '.requirements.libuv_min_version' build-config.json)
-          echo "Required minimum: $MIN_VER"
 
       - name: Build PHP
         working-directory: php-src
