@@ -1,0 +1,121 @@
+name: Build & Push Docker Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      test_only:
+        description: 'Build only, do not push to Docker Hub'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Read build configuration
+  # ---------------------------------------------------------------------------
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      php_src_branch: ${{ steps.read.outputs.php_src_branch }}
+      async_branch: ${{ steps.read.outputs.async_branch }}
+      xdebug_branch: ${{ steps.read.outputs.xdebug_branch }}
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read build-config.json
+        id: read
+        run: |
+          echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "xdebug_branch=$(jq -r '.extensions.xdebug.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Build Docker images
+  # ---------------------------------------------------------------------------
+  build-docker:
+    name: "Docker (${{ matrix.tag }})"
+    needs: config
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: 8.6-cli
+            dockerfile: docker/Dockerfile.debian
+            sapi: cli
+          - tag: 8.6-fpm
+            dockerfile: docker/Dockerfile.debian
+            sapi: fpm
+          - tag: 8.6-cli-alpine
+            dockerfile: docker/Dockerfile.alpine
+            sapi: cli
+          - tag: 8.6-fpm-alpine
+            dockerfile: docker/Dockerfile.alpine
+            sapi: fpm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: ${{ !inputs.test_only }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: |
+            SAPI=${{ matrix.sapi }}
+            PHP_SRC_BRANCH=${{ needs.config.outputs.php_src_branch }}
+            ASYNC_BRANCH=${{ needs.config.outputs.async_branch }}
+            XDEBUG_BRANCH=${{ needs.config.outputs.xdebug_branch }}
+          push: ${{ !inputs.test_only }}
+          tags: |
+            trueasync/php-true-async:${{ matrix.tag }}
+          cache-from: type=gha,scope=${{ matrix.tag }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.tag }}
+
+      - name: Verify image
+        run: |
+          docker run --rm trueasync/php-true-async:${{ matrix.tag }} php -v
+          docker run --rm trueasync/php-true-async:${{ matrix.tag }} php -m
+
+  # ---------------------------------------------------------------------------
+  # Tag "latest" after all builds succeed
+  # ---------------------------------------------------------------------------
+  tag-latest:
+    name: "Tag latest"
+    if: ${{ !inputs.test_only }}
+    needs: [config, build-docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Pull and tag latest
+        run: |
+          docker pull trueasync/php-true-async:8.6-cli
+          docker tag trueasync/php-true-async:8.6-cli trueasync/php-true-async:latest
+          docker push trueasync/php-true-async:latest

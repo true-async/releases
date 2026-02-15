@@ -1,0 +1,177 @@
+# TrueAsync PHP — Alpine-based image (cli / fpm)
+# Build args: SAPI=cli|fpm, PHP_SRC_BRANCH, ASYNC_BRANCH, XDEBUG_BRANCH
+
+ARG SAPI=cli
+
+# =============================================================================
+# Stage 1: Build PHP from source
+# =============================================================================
+FROM alpine:3.20 AS builder
+
+ARG SAPI
+ARG PHP_SRC_REPO=https://github.com/true-async/php-src.git
+ARG PHP_SRC_BRANCH=true-async-stable
+ARG ASYNC_REPO=https://github.com/true-async/php-async.git
+ARG ASYNC_BRANCH=main
+ARG XDEBUG_REPO=https://github.com/true-async/xdebug.git
+ARG XDEBUG_BRANCH=true-async-86
+
+# Install build dependencies
+RUN apk add --no-cache \
+    autoconf automake bison re2c pkgconf \
+    build-base git curl wget cmake ninja linux-headers \
+    libxml2-dev sqlite-dev \
+    openssl-dev libzip-dev zlib-dev \
+    libpq-dev oniguruma-dev libsodium-dev \
+    readline-dev bzip2-dev \
+    gmp-dev icu-dev libxslt-dev \
+    libjpeg-turbo-dev libwebp-dev freetype-dev libpng-dev \
+    tidyhtml-dev openldap-dev \
+    argon2-dev libffi-dev \
+    net-snmp-dev enchant2-dev \
+    gdbm-dev lmdb-dev \
+    libuv-dev curl-dev dos2unix
+
+# Build libcurl 8.10.1 (need >= 7.87.0 for TrueAsync)
+RUN wget -q https://github.com/curl/curl/releases/download/curl-8_10_1/curl-8.10.1.tar.gz \
+    && tar -xf curl-8.10.1.tar.gz \
+    && cd curl-8.10.1 \
+    && ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static \
+    && make -j"$(nproc)" && make install \
+    && cd / && rm -rf curl*
+
+# Clone sources
+RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-src \
+    && git clone --depth 1 --branch ${ASYNC_BRANCH} ${ASYNC_REPO} /usr/src/php-src/ext/async \
+    && git clone --depth 1 --branch ${XDEBUG_BRANCH} ${XDEBUG_REPO} /usr/src/xdebug
+
+# Fix possible Windows line endings
+RUN dos2unix /usr/src/php-src/ext/async/config.m4
+
+# Build PHP
+WORKDIR /usr/src/php-src
+
+RUN ./buildconf --force \
+    && FPM_FLAG="" \
+    && if [ "$SAPI" = "fpm" ]; then FPM_FLAG="--enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data"; fi \
+    && ./configure \
+        --prefix=/usr/local \
+        --with-config-file-path=/etc \
+        --with-config-file-scan-dir=/etc/php.d \
+        --disable-debug --enable-zts \
+        --enable-async \
+        --enable-phpdbg \
+        --enable-bcmath \
+        --enable-calendar \
+        --enable-exif \
+        --enable-ftp \
+        --enable-intl \
+        --enable-mbstring \
+        --enable-pdo \
+        --enable-shmop \
+        --enable-soap \
+        --enable-sockets \
+        --enable-pcntl \
+        --enable-sysvmsg \
+        --enable-sysvsem \
+        --enable-sysvshm \
+        --enable-gd \
+        --enable-dba \
+        --enable-xmlreader \
+        --with-bz2 \
+        --with-curl=/usr/local \
+        --with-gettext \
+        --with-gmp \
+        --with-mysqli=mysqlnd \
+        --with-openssl \
+        --with-pdo-mysql=mysqlnd \
+        --with-pdo-pgsql \
+        --with-pdo-sqlite \
+        --with-pgsql \
+        --with-sqlite3 \
+        --with-xsl \
+        --with-zlib \
+        --with-jpeg \
+        --with-webp \
+        --with-freetype \
+        --with-zip \
+        --with-sodium \
+        --with-readline \
+        --with-tidy \
+        --with-ldap \
+        --with-enchant \
+        --with-ffi \
+        --with-snmp \
+        --with-gdbm \
+        --with-lmdb \
+        --with-libxml \
+        --without-pear \
+        ${FPM_FLAG} \
+    && make -j"$(nproc)" \
+    && make install
+
+# Build xdebug
+WORKDIR /usr/src/xdebug
+RUN /usr/local/bin/phpize \
+    && ./configure --with-php-config=/usr/local/bin/php-config \
+    && make -j"$(nproc)" \
+    && make install
+
+# Minimal PHP config
+RUN mkdir -p /etc/php.d \
+    && echo "opcache.enable_cli=1" > /etc/php.d/opcache.ini \
+    && echo "zend_extension=xdebug.so" > /etc/php.d/xdebug.ini \
+    && echo "xdebug.mode=off" >> /etc/php.d/xdebug.ini
+
+# =============================================================================
+# Stage 2: Runtime image
+# =============================================================================
+FROM alpine:3.20
+
+ARG SAPI
+
+# Install runtime dependencies only
+RUN apk add --no-cache \
+    libxml2 sqlite-libs \
+    openssl libzip zlib \
+    libpq oniguruma libsodium \
+    readline libbz2 \
+    gmp icu-libs libxslt \
+    libjpeg-turbo libwebp freetype libpng \
+    tidyhtml-libs libldap \
+    argon2-libs libffi \
+    net-snmp-libs enchant2 \
+    gdbm lmdb-libs \
+    libuv libcurl \
+    ca-certificates \
+    && addgroup -g 82 -S www-data 2>/dev/null || true \
+    && adduser -u 82 -D -S -G www-data www-data 2>/dev/null || true
+
+# Copy built PHP and libraries from builder
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /etc/php.d /etc/php.d
+
+ENV PATH="/usr/local/bin:/usr/local/sbin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/lib"
+
+# FPM configuration
+RUN if [ "$SAPI" = "fpm" ]; then \
+        cp /usr/local/etc/php-fpm.conf.default /usr/local/etc/php-fpm.conf \
+        && cp /usr/local/etc/php-fpm.d/www.conf.default /usr/local/etc/php-fpm.d/www.conf \
+        && sed -i 's/;daemonize = yes/daemonize = no/' /usr/local/etc/php-fpm.conf \
+        && sed -i 's/listen = .*/listen = 9000/' /usr/local/etc/php-fpm.d/www.conf; \
+    fi
+
+# Verify
+RUN php -v && php -m
+
+# Persist SAPI for CMD
+ENV PHP_SAPI=${SAPI}
+
+WORKDIR /app
+
+EXPOSE 9000
+
+STOPSIGNAL SIGQUIT
+
+CMD ["sh", "-c", "if [ \"$PHP_SAPI\" = 'fpm' ]; then php-fpm; else php -a; fi"]

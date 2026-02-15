@@ -1,18 +1,34 @@
 # TrueAsync PHP
 
-Pre-built PHP binaries with native async/coroutine support via the TrueAsync extension.
+Pre-built PHP binaries and Docker images with native async/coroutine support via the TrueAsync extension.
 
-## Quick Install
+## Docker (Linux)
 
-**Windows (PowerShell):**
+```bash
+docker pull trueasync/php-true-async:8.6-cli
+docker run --rm trueasync/php-true-async:8.6-cli php -v
+```
+
+Available tags:
+
+| Tag | Base | Description |
+|-----|------|-------------|
+| `8.6-cli` | Debian 12 | CLI for scripts, workers, async servers |
+| `8.6-fpm` | Debian 12 | PHP-FPM for web applications |
+| `8.6-cli-alpine` | Alpine 3.20 | Lightweight CLI (~50MB) |
+| `8.6-fpm-alpine` | Alpine 3.20 | Lightweight FPM (~50MB) |
+| `latest` | Debian 12 | Alias for `8.6-cli` |
+
+## Windows
+
+**Quick install (PowerShell):**
 ```powershell
 irm https://raw.githubusercontent.com/true-async/releases/main/installer/install.ps1 | iex
 ```
 
-## Manual Install
-
+**Manual install:**
 1. Go to [Releases](https://github.com/true-async/releases/releases)
-2. Download the archive for your platform:
+2. Download the archive:
    - **Release** — for general use
    - **Debug** — for PHP/extension development (includes debug symbols and assertions)
 3. Verify the SHA256 checksum from `sha256sums.txt`
@@ -21,9 +37,9 @@ irm https://raw.githubusercontent.com/true-async/releases/main/installer/install
 
 ## Verify Installation
 
-```powershell
+```bash
 php -v
-php -m | findstr async
+php -m | grep async
 ```
 
 ## What's Included
@@ -37,8 +53,9 @@ Standard PHP extensions: curl, mbstring, openssl, pdo, pdo_mysql, pdo_pgsql, pdo
 
 ## Platforms
 
-| Platform | Architecture | Build Types | Status |
-|----------|-------------|-------------|--------|
+| Platform | Distribution | Variants | Status |
+|----------|-------------|----------|--------|
+| Linux    | Docker      | cli, fpm, cli-alpine, fpm-alpine | ✅ |
 | Windows  | x64         | Release, Debug | ✅ |
 
 ## Configuration
@@ -50,6 +67,7 @@ Build parameters are defined in [`build-config.json`](build-config.json):
 
 ## Links
 
+- [Docker Hub](https://hub.docker.com/r/trueasync/php-true-async) — Docker images
 - [TrueAsync PHP Source](https://github.com/true-async/php-src) — PHP fork with async API
 - [TrueAsync Extension](https://github.com/true-async/async) — libuv-based async implementation
 - [TrueAsync Xdebug](https://github.com/true-async/xdebug) — Xdebug with async support
