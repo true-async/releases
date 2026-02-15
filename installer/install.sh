@@ -2,7 +2,10 @@
 set -euo pipefail
 
 # TrueAsync PHP Installer for Linux/macOS
-# Usage: curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/install.sh | bash
+#
+# Install:  curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/install.sh | bash
+# Update:   php-trueasync update
+# Uninstall: php-trueasync uninstall
 #
 # Options (via environment variables):
 #   INSTALL_DIR   — Installation directory (default: $HOME/.php-trueasync)
@@ -13,6 +16,7 @@ REPO="true-async/releases"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.php-trueasync}"
 VERSION="${VERSION:-latest}"
 SKIP_VERIFY="${SKIP_VERIFY:-false}"
+VERSION_FILE=".trueasync-version"
 
 # Colors
 RED='\033[0;31m'
@@ -83,6 +87,16 @@ get_latest_version() {
     fi
 }
 
+# --- Get currently installed version ---
+get_installed_version() {
+    local vfile="${INSTALL_DIR}/${VERSION_FILE}"
+    if [[ -f "$vfile" ]]; then
+        cat "$vfile"
+    else
+        echo ""
+    fi
+}
+
 # --- Verify SHA256 ---
 verify_checksum() {
     local file="$1" expected="$2"
@@ -104,14 +118,8 @@ verify_checksum() {
     ok "Checksum verified"
 }
 
-# === Main ===
-main() {
-    echo ""
-    echo -e "${CYAN}╔══════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║     TrueAsync PHP Installer          ║${NC}"
-    echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
-    echo ""
-
+# --- Install/update ---
+do_install() {
     local platform
     platform=$(detect_platform)
     info "Platform: $platform"
@@ -164,11 +172,17 @@ main() {
     mkdir -p "$INSTALL_DIR"
     tar xzf "${tmpdir}/${archive}" -C "$INSTALL_DIR" --strip-components=1
 
+    # Save version marker
+    echo "$VERSION" > "${INSTALL_DIR}/${VERSION_FILE}"
+
     ok "Installed to ${INSTALL_DIR}"
 
     # Setup PATH hint
     local bin_dir="${INSTALL_DIR}/bin"
     if [[ -d "$bin_dir" ]]; then
+        # Install the management script
+        install_management_script "$bin_dir"
+
         local shell_rc=""
         if [[ -n "${BASH_VERSION:-}" ]]; then
             shell_rc="$HOME/.bashrc"
@@ -190,8 +204,143 @@ main() {
     info "Verifying installation..."
     "${bin_dir}/php" -v
     echo ""
-    ok "TrueAsync PHP installed successfully!"
+    ok "TrueAsync PHP ${VERSION} installed successfully!"
     echo ""
+}
+
+# --- Install php-trueasync management script ---
+install_management_script() {
+    local bin_dir="$1"
+    local script="${bin_dir}/php-trueasync"
+
+    cat > "$script" << 'MGMT_SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+VERSION_FILE=".trueasync-version"
+INSTALLER_URL="https://raw.githubusercontent.com/true-async/releases/main/installer/install.sh"
+
+case "${1:-help}" in
+    update)
+        echo "Checking for updates..."
+        CURRENT=$(cat "${SCRIPT_DIR}/${VERSION_FILE}" 2>/dev/null || echo "unknown")
+        echo "Current version: $CURRENT"
+
+        INSTALL_DIR="$SCRIPT_DIR" exec bash <(curl -fsSL "$INSTALLER_URL")
+        ;;
+    version)
+        cat "${SCRIPT_DIR}/${VERSION_FILE}" 2>/dev/null || echo "unknown"
+        ;;
+    uninstall)
+        echo "Uninstalling TrueAsync PHP from ${SCRIPT_DIR}..."
+
+        # Remove PATH from shell rc files
+        for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+            if [[ -f "$rc" ]] && grep -q "php-trueasync" "$rc"; then
+                sed -i.bak '/php-trueasync/d' "$rc"
+                rm -f "${rc}.bak"
+                echo "Cleaned PATH from $rc"
+            fi
+        done
+
+        # Remove installation
+        rm -rf "$SCRIPT_DIR"
+        echo "TrueAsync PHP uninstalled."
+        echo "Restart your terminal to apply PATH changes."
+        ;;
+    help|--help|-h)
+        echo "TrueAsync PHP Manager"
+        echo ""
+        echo "Usage: php-trueasync <command>"
+        echo ""
+        echo "Commands:"
+        echo "  update      Check for updates and install the latest version"
+        echo "  version     Show the installed version"
+        echo "  uninstall   Remove TrueAsync PHP and clean up PATH"
+        echo "  help        Show this help message"
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'php-trueasync help' for usage."
+        exit 1
+        ;;
+esac
+MGMT_SCRIPT
+
+    chmod +x "$script"
+}
+
+# --- Update command (called directly) ---
+do_update() {
+    local current
+    current=$(get_installed_version)
+
+    if [[ -z "$current" ]]; then
+        info "No existing installation found. Running fresh install..."
+        do_install
+        return
+    fi
+
+    info "Current version: $current"
+    info "Checking for updates..."
+
+    local latest
+    latest=$(get_latest_version)
+
+    if [[ -z "$latest" ]]; then
+        error "Could not determine latest version"
+    fi
+
+    if [[ "$current" == "$latest" ]]; then
+        ok "Already up to date ($current)"
+        return
+    fi
+
+    info "New version available: $latest (current: $current)"
+    VERSION="$latest"
+    do_install
+}
+
+# --- Uninstall ---
+do_uninstall() {
+    if [[ ! -d "$INSTALL_DIR" ]]; then
+        warn "TrueAsync PHP is not installed at ${INSTALL_DIR}"
+        return
+    fi
+
+    info "Uninstalling TrueAsync PHP from ${INSTALL_DIR}..."
+
+    # Remove PATH from shell rc files
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+        if [[ -f "$rc" ]] && grep -q "php-trueasync" "$rc"; then
+            sed -i.bak '/php-trueasync/d' "$rc"
+            rm -f "${rc}.bak"
+            ok "Cleaned PATH from $rc"
+        fi
+    done
+
+    rm -rf "$INSTALL_DIR"
+    ok "TrueAsync PHP uninstalled"
+    warn "Restart your terminal to apply PATH changes"
+}
+
+# === Entry point ===
+main() {
+    local command="${1:-install}"
+
+    echo ""
+    echo -e "${CYAN}╔══════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║     TrueAsync PHP Installer          ║${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
+    echo ""
+
+    case "$command" in
+        install)   do_install ;;
+        update)    do_update ;;
+        uninstall) do_uninstall ;;
+        *)         do_install ;;
+    esac
 }
 
 main "$@"

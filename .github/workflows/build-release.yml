@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      test_only:
+        description: 'Test build only (no release, no artifacts saved)'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -42,7 +49,11 @@ jobs:
           echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "xdebug_repo=$(jq -r '.extensions.xdebug.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "xdebug_branch=$(jq -r '.extensions.xdebug.branch' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   # Linux x64 build
@@ -136,6 +147,7 @@ jobs:
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       - name: Upload artifact
+        if: ${{ !inputs.test_only }}
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
@@ -262,6 +274,7 @@ jobs:
         shell: pwsh
 
       - name: Upload artifact
+        if: ${{ !inputs.test_only }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
@@ -272,6 +285,7 @@ jobs:
   # Create GitHub Release with checksums
   # ---------------------------------------------------------------------------
   release:
+    if: ${{ !inputs.test_only }}
     needs: [config, build-linux, build-windows]
     runs-on: ubuntu-latest
     steps:
