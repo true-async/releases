@@ -1,7 +1,7 @@
 {
   "php_src": {
     "repo": "true-async/php-src",
-    "branch": "true-async"
+    "branch": "true-async-stable"
   },
   "extensions": {
     "async": {
