@@ -853,8 +853,8 @@ main() {
     fi
 
     # Determine total steps
-    STEP_TOTAL=7
-    [[ "$NO_XDEBUG" != "true" ]] && STEP_TOTAL=8
+    STEP_TOTAL=9
+    [[ "$NO_XDEBUG" != "true" ]] && STEP_TOTAL=10
 
     read_config
 
