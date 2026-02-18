@@ -239,10 +239,11 @@ ask_yesno() {
 ask_input() {
     local prompt="$1"
     local default="$2"
+    local __result_var="$3"
 
-    printf "  ${BOLD}%s${NC} [${DIM}%s${NC}]: " "$prompt" "$default" >&2
+    printf "  ${BOLD}%s${NC} [${DIM}%s${NC}]: " "$prompt" "$default"
     read -r answer
-    echo "${answer:-$default}"
+    printf -v "$__result_var" '%s' "${answer:-$default}"
 }
 
 run_wizard() {
@@ -281,7 +282,7 @@ run_wizard() {
 
     # 3. Install prefix
     echo ""
-    INSTALL_DIR=$(ask_input "Installation directory" "$INSTALL_DIR")
+    ask_input "Installation directory" "$INSTALL_DIR" INSTALL_DIR
 
     # 4. PATH
     echo ""
