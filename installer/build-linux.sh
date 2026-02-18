@@ -18,6 +18,16 @@ set -euo pipefail
 #   --help               Show this help
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Self-relaunch: when piped via curl, save to temp file and re-exec with tty
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if [[ -z "${__TRUEASYNC_RELAUNCHED:-}" ]] && ! [[ -t 0 ]]; then
+    _tmpscript=$(mktemp)
+    cat > "$_tmpscript"
+    __TRUEASYNC_RELAUNCHED=1 exec bash "$_tmpscript" "$@" < /dev/tty
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Configuration defaults
 # ═══════════════════════════════════════════════════════════════════════════════
 
