@@ -199,9 +199,16 @@ ask_choice() {
         echo -e "    ${CYAN}$((i + 1))${NC}) ${options[$i]}"
     done
 
+    local default="${ASK_CHOICE_DEFAULT:-}"
+
     while true; do
-        printf "  ${BOLD}▸${NC} Your choice [1-%d]: " "$count"
+        if [[ -n "$default" ]]; then
+            printf "  ${BOLD}▸${NC} Your choice [1-%d] (default: %d): " "$count" "$default"
+        else
+            printf "  ${BOLD}▸${NC} Your choice [1-%d]: " "$count"
+        fi
         read -r choice
+        [[ -z "$choice" && -n "$default" ]] && choice="$default"
         if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= count )); then
             return $((choice - 1))
         fi
@@ -237,7 +244,7 @@ run_wizard() {
     echo -e "  ${DIM}Configure your TrueAsync PHP build${NC}"
 
     # 1. Extensions
-    ask_choice "Which extensions to build?" \
+    ASK_CHOICE_DEFAULT=2 ask_choice "Which extensions to build?" \
         "Standard — async + core extensions" \
         "Standard + Xdebug — adds debugging support" \
         "All — everything including Xdebug" \
