@@ -361,9 +361,13 @@ check_system() {
         error "This script requires apt (Ubuntu/Debian). Your distro is not supported yet."
     fi
 
-    # Check for sudo
-    if [[ $EUID -ne 0 ]] && ! command -v sudo &>/dev/null; then
-        error "sudo is required to install build dependencies."
+    # Check for sudo and pre-authenticate
+    if [[ $EUID -ne 0 ]]; then
+        if ! command -v sudo &>/dev/null; then
+            error "sudo is required to install build dependencies."
+        fi
+        info "Sudo access is required to install build dependencies."
+        sudo -v || error "Failed to obtain sudo credentials."
     fi
 }
 
