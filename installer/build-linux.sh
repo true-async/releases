@@ -284,6 +284,23 @@ run_wizard() {
     echo ""
     ask_input "Installation directory" "$INSTALL_DIR" INSTALL_DIR
 
+    # Check for existing installation
+    if [[ -x "${INSTALL_DIR}/bin/php" ]]; then
+        echo ""
+        local existing_ver
+        existing_ver=$("${INSTALL_DIR}/bin/php" -v 2>/dev/null | head -1 || echo "unknown")
+        warn "Existing PHP found in ${INSTALL_DIR}:"
+        echo -e "  ${DIM}${existing_ver}${NC}"
+        echo ""
+        ask_choice "What would you like to do?" \
+            "Rebuild — remove and build fresh" \
+            "Cancel — keep existing installation"
+        local overwrite_choice=$?
+        case $overwrite_choice in
+            1) info "Build cancelled."; exit 0 ;;
+        esac
+    fi
+
     # 4. PATH
     echo ""
     if ask_yesno "Add to PATH as default php?" "n"; then
@@ -826,6 +843,16 @@ main() {
     # Interactive wizard
     if [[ "$NO_INTERACTIVE" != "true" ]] && [[ -t 0 ]]; then
         run_wizard
+    else
+        # Non-interactive: skip if already installed
+        if [[ -x "${INSTALL_DIR}/bin/php" ]]; then
+            local existing_ver
+            existing_ver=$("${INSTALL_DIR}/bin/php" -v 2>/dev/null | head -1 || echo "unknown")
+            info "PHP already installed in ${INSTALL_DIR}:"
+            echo -e "  ${DIM}${existing_ver}${NC}"
+            info "Skipping build. Remove the directory or use a different INSTALL_DIR to rebuild."
+            exit 0
+        fi
     fi
 
     # Determine total steps
