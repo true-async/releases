@@ -223,11 +223,16 @@ ask_yesno() {
     local hint="y/N"
     [[ "$default" == "y" ]] && hint="Y/n"
 
-    printf "  ${BOLD}%s${NC} [%s]: " "$prompt" "$hint"
-    read -r answer
-    answer="${answer:-$default}"
-
-    [[ "${answer,,}" == "y" || "${answer,,}" == "yes" ]]
+    while true; do
+        printf "  ${BOLD}%s${NC} [%s]: " "$prompt" "$hint"
+        read -r answer
+        answer="${answer:-$default}"
+        case "${answer,,}" in
+            y|yes) return 0 ;;
+            n|no)  return 1 ;;
+            *)     echo -e "  ${RED}Please answer y or n${NC}" ;;
+        esac
+    done
 }
 
 ask_input() {
