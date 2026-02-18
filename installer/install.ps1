@@ -11,7 +11,7 @@
 .NOTES
     Set $env:INSTALL_DIR to customize installation path.
     Set $env:VERSION to install a specific version (e.g., "v0.1.0").
-    Set $env:NO_PATH = "true" to skip adding to PATH.
+    Set $env:SET_DEFAULT = "true" to add to PATH as default php.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -21,7 +21,7 @@ $Repo = "true-async/releases"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "$env:LOCALAPPDATA\php-trueasync" }
 $Version = if ($env:VERSION) { $env:VERSION } else { "latest" }
 $SkipVerify = $env:SKIP_VERIFY -eq "true"
-$NoPath = $env:NO_PATH -eq "true"
+$SetDefault = $env:SET_DEFAULT -eq "true"
 $VersionFile = ".trueasync-version"
 $Command = if ($env:TRUEASYNC_CMD) { $env:TRUEASYNC_CMD } else { "install" }
 
@@ -205,8 +205,8 @@ function Do-Install {
         # Install management script
         Install-ManagementScript
 
-        # Add to PATH
-        if (-not $NoPath) {
+        # Add to PATH (only if explicitly requested)
+        if ($SetDefault) {
             $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
             if ($currentPath -notlike "*php-trueasync*") {
                 [Environment]::SetEnvironmentVariable("Path", "$InstallDir;$currentPath", "User")
@@ -215,7 +215,8 @@ function Do-Install {
                 Write-Warn "Restart your terminal for PATH changes to take effect"
             }
         } else {
-            Write-Info "Skipping PATH modification (NO_PATH=true)"
+            Write-Info "PATH not modified (use SET_DEFAULT=true to add to PATH)"
+            Write-Info "Binary location: $(Join-Path $InstallDir 'php.exe')"
         }
 
         # Verify

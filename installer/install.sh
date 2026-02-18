@@ -11,13 +11,13 @@ set -euo pipefail
 #   INSTALL_DIR   — Installation directory (default: $HOME/.php-trueasync)
 #   VERSION       — Specific version to install (default: latest)
 #   SKIP_VERIFY   — Skip SHA256 verification (default: false)
-#   NO_PATH       — Skip adding to PATH (default: false)
+#   SET_DEFAULT   — Add to PATH as default php (default: false)
 
 REPO="true-async/releases"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.php-trueasync}"
 VERSION="${VERSION:-latest}"
 SKIP_VERIFY="${SKIP_VERIFY:-false}"
-NO_PATH="${NO_PATH:-false}"
+SET_DEFAULT="${SET_DEFAULT:-false}"
 VERSION_FILE=".trueasync-version"
 
 # Colors
@@ -185,7 +185,7 @@ do_install() {
         # Install the management script
         install_management_script "$bin_dir"
 
-        if [[ "$NO_PATH" != "true" ]]; then
+        if [[ "$SET_DEFAULT" == "true" ]]; then
             local shell_rc=""
             if [[ -n "${BASH_VERSION:-}" ]]; then
                 shell_rc="$HOME/.bashrc"
@@ -201,7 +201,7 @@ do_install() {
                 warn "Run 'source ${shell_rc}' or open a new terminal to use php"
             fi
         else
-            info "Skipping PATH modification (NO_PATH=true)"
+            info "PATH not modified (use SET_DEFAULT=true to add to PATH)"
             info "Binary location: ${bin_dir}/php"
         fi
     fi
