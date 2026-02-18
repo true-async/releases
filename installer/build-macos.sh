@@ -3,7 +3,7 @@ set -euo pipefail
 
 # TrueAsync PHP — Build from Source for macOS
 #
-# Interactive:  curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/build-macos.sh | bash
+# Interactive:  curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-macos.sh | bash
 # Non-interactive: curl -fsSL ... | EXTENSIONS=all NO_INTERACTIVE=true bash
 #
 # Options (CLI args or environment variables):
@@ -297,7 +297,7 @@ run_wizard() {
 read_config() {
     if [[ ! -f "$CONFIG_FILE" ]]; then
         CONFIG_FILE=$(mktemp)
-        local config_url="https://raw.githubusercontent.com/true-async/releases/main/build-config.json"
+        local config_url="https://raw.githubusercontent.com/true-async/releases/master/build-config.json"
         curl -fsSL "$config_url" -o "$CONFIG_FILE"
     fi
 
@@ -723,7 +723,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION_FILE=".trueasync-version"
-INSTALLER_URL="https://raw.githubusercontent.com/true-async/releases/main/installer/build-macos.sh"
+INSTALLER_URL="https://raw.githubusercontent.com/true-async/releases/master/installer/build-macos.sh"
 
 case "${1:-help}" in
     update|rebuild)

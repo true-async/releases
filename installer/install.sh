@@ -3,7 +3,7 @@ set -euo pipefail
 
 # TrueAsync PHP Installer for Linux/macOS
 #
-# Install:  curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/install.sh | bash
+# Install:  curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/install.sh | bash
 # Update:   php-trueasync update
 # Uninstall: php-trueasync uninstall
 #
@@ -226,7 +226,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION_FILE=".trueasync-version"
-INSTALLER_URL="https://raw.githubusercontent.com/true-async/releases/main/installer/install.sh"
+INSTALLER_URL="https://raw.githubusercontent.com/true-async/releases/master/installer/install.sh"
 
 case "${1:-help}" in
     update)

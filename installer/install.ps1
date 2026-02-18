@@ -5,7 +5,7 @@
 .DESCRIPTION
     Downloads and installs TrueAsync PHP on Windows.
 
-    Install:   irm https://raw.githubusercontent.com/true-async/releases/main/installer/install.ps1 | iex
+    Install:   irm https://raw.githubusercontent.com/true-async/releases/master/installer/install.ps1 | iex
     Update:    php-trueasync update
     Uninstall: php-trueasync uninstall
 .NOTES
@@ -97,7 +97,7 @@ if exist "%VERSION_FILE%" (
 )
 set "TRUEASYNC_CMD=update"
 set "INSTALL_DIR=%INSTALL_DIR%"
-powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/true-async/releases/main/installer/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/true-async/releases/master/installer/install.ps1 | iex"
 goto :eof
 
 :version

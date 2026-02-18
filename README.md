@@ -24,7 +24,7 @@ Available tags:
 ### Build from Source (Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/build-linux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-linux.sh | bash
 ```
 
 An interactive wizard will guide you through the build configuration: extensions, debug mode, install path, and PATH setup.
@@ -32,7 +32,7 @@ An interactive wizard will guide you through the build configuration: extensions
 For non-interactive use (CI/scripts):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/build-linux.sh | \
+curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-linux.sh | \
   NO_INTERACTIVE=true EXTENSIONS=all SET_DEFAULT=true bash
 ```
 
@@ -41,7 +41,7 @@ Supported distros: Ubuntu, Debian (apt-based).
 ### Build from Source (macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/build-macos.sh | bash
+curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-macos.sh | bash
 ```
 
 Requires [Homebrew](https://brew.sh). Supports both Apple Silicon (ARM) and Intel Macs.
@@ -49,7 +49,7 @@ Requires [Homebrew](https://brew.sh). Supports both Apple Silicon (ARM) and Inte
 For non-interactive use:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/build-macos.sh | \
+curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-macos.sh | \
   NO_INTERACTIVE=true EXTENSIONS=all SET_DEFAULT=true bash
 ```
 
@@ -57,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/
 
 **Quick install (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/true-async/releases/main/installer/install.ps1 | iex
+irm https://raw.githubusercontent.com/true-async/releases/master/installer/install.ps1 | iex
 ```
 
 **Manual install:**

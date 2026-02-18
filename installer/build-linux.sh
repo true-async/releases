@@ -3,7 +3,7 @@ set -euo pipefail
 
 # TrueAsync PHP — Build from Source for Linux (Ubuntu/Debian)
 #
-# Interactive:  curl -fsSL https://raw.githubusercontent.com/true-async/releases/main/installer/build-linux.sh | bash
+# Interactive:  curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-linux.sh | bash
 # Non-interactive: curl -fsSL ... | EXTENSIONS=all NO_INTERACTIVE=true bash
 #
 # Options (CLI args or environment variables):
@@ -295,7 +295,7 @@ read_config() {
     if [[ ! -f "$CONFIG_FILE" ]]; then
         # Download config if running from curl pipe
         CONFIG_FILE=$(mktemp)
-        local config_url="https://raw.githubusercontent.com/true-async/releases/main/build-config.json"
+        local config_url="https://raw.githubusercontent.com/true-async/releases/master/build-config.json"
         if command -v curl &>/dev/null; then
             curl -fsSL "$config_url" -o "$CONFIG_FILE"
         elif command -v wget &>/dev/null; then
@@ -693,7 +693,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION_FILE=".trueasync-version"
-INSTALLER_URL="https://raw.githubusercontent.com/true-async/releases/main/installer/build-linux.sh"
+INSTALLER_URL="https://raw.githubusercontent.com/true-async/releases/master/installer/build-linux.sh"
 
 case "${1:-help}" in
     update|rebuild)
