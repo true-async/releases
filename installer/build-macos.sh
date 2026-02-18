@@ -237,7 +237,7 @@ ask_input() {
     local prompt="$1"
     local default="$2"
 
-    printf "  ${BOLD}%s${NC} [${DIM}%s${NC}]: " "$prompt" "$default"
+    printf "  ${BOLD}%s${NC} [${DIM}%s${NC}]: " "$prompt" "$default" >&2
     read -r answer
     echo "${answer:-$default}"
 }
