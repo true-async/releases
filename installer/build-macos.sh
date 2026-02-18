@@ -21,7 +21,7 @@ set -euo pipefail
 # Configuration defaults
 # ═══════════════════════════════════════════════════════════════════════════════
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd 2>/dev/null || echo /tmp)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]+${BASH_SOURCE[0]}}")" 2>/dev/null && pwd || echo /tmp)"
 CONFIG_FILE="${SCRIPT_DIR}/../build-config.json"
 
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.php-trueasync}"
