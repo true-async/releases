@@ -797,20 +797,16 @@ show_final_message() {
     local bin_dir="${INSTALL_DIR}/bin"
 
     echo ""
-    echo -e "  ${GREEN}${BOLD}┌──────────────────────────────────────────────┐${NC}"
-    echo -e "  ${GREEN}${BOLD}│${NC}                                              ${GREEN}${BOLD}│${NC}"
-    echo -e "  ${GREEN}${BOLD}│${NC}  ${GREEN}${BOLD}⚡ Build complete!${NC}                           ${GREEN}${BOLD}│${NC}"
-    echo -e "  ${GREEN}${BOLD}│${NC}                                              ${GREEN}${BOLD}│${NC}"
-    echo -e "  ${GREEN}${BOLD}│${NC}  PHP binary: ${CYAN}${bin_dir}/php${NC}"
-    echo -e "  ${GREEN}${BOLD}│${NC}  Manager:    ${CYAN}${bin_dir}/php-trueasync${NC}"
-    echo -e "  ${GREEN}${BOLD}│${NC}                                              ${GREEN}${BOLD}│${NC}"
+    echo -e "  ${GREEN}${BOLD}Build complete!${NC}"
+    echo -e "  ─────────────────────────────────────"
+    echo -e "  PHP binary: ${CYAN}${bin_dir}/php${NC}"
+    echo -e "  Manager:    ${CYAN}${bin_dir}/php-trueasync${NC}"
 
     if [[ "$SET_DEFAULT" != "true" ]]; then
-        echo -e "  ${GREEN}${BOLD}│${NC}  ${DIM}Tip: Run with --set-default to add to PATH${NC}  ${GREEN}${BOLD}│${NC}"
-        echo -e "  ${GREEN}${BOLD}│${NC}                                              ${GREEN}${BOLD}│${NC}"
+        echo ""
+        echo -e "  ${DIM}Tip: Run with --set-default to add to PATH${NC}"
     fi
 
-    echo -e "  ${GREEN}${BOLD}└──────────────────────────────────────────────┘${NC}"
     echo ""
 }
 
