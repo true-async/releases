@@ -221,11 +221,14 @@ ask_yesno() {
     local prompt="$1"
     local default="${2:-n}"
 
-    local hint="y/N"
-    [[ "$default" == "y" ]] && hint="Y/n"
+    local hint="y/N" default_hint="N"
+    if [[ "$default" == "y" ]]; then
+        hint="Y/n"
+        default_hint="Y"
+    fi
 
     while true; do
-        printf "  ${BOLD}%s${NC} [%s]: " "$prompt" "$hint"
+        printf "  ${BOLD}%s${NC} [%s] (default: %s): " "$prompt" "$hint" "$default_hint"
         read -r answer
         answer="${answer:-$default}"
         case "${answer,,}" in
