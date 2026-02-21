@@ -20,6 +20,7 @@ $ProgressPreference = "SilentlyContinue"
 $Repo = "true-async/releases"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "$env:LOCALAPPDATA\php-trueasync" }
 $Version = if ($env:VERSION) { $env:VERSION } else { "latest" }
+$PhpVersion = $env:PHP_VERSION  # optional, e.g. "8.6"; auto-detected from release assets if not set
 $SkipVerify = $env:SKIP_VERIFY -eq "true"
 $SetDefault = $env:SET_DEFAULT -eq "true"
 $VersionFile = ".trueasync-version"
@@ -155,9 +156,24 @@ function Do-Install {
     $versionNum = $Version.TrimStart("v")
     Write-Info "Version: $Version"
 
-    # Determine archive
-    $archive = "php-trueasync-${versionNum}-${platform}.zip"
+    # Determine archive name
     $baseUrl = "https://github.com/$Repo/releases/download/$Version"
+    if ($PhpVersion) {
+        $archive = "php-trueasync-${versionNum}-php${PhpVersion}-${platform}.zip"
+    } else {
+        # Auto-detect from release assets
+        Write-Info "Detecting PHP version from release assets..."
+        $releaseUrl = "https://api.github.com/repos/$Repo/releases/tags/$Version"
+        $release = Invoke-RestMethod -Uri $releaseUrl -Headers @{ "User-Agent" = "TrueAsync-Installer" }
+        $asset = $release.assets | Where-Object {
+            $_.name -match "^php-trueasync-.*-${platform}\.zip$" -and $_.name -notmatch "-debug"
+        } | Select-Object -First 1
+        if (-not $asset) {
+            Write-Err "No release asset found for platform: $platform. Use `$env:PHP_VERSION to specify a PHP version."
+        }
+        $archive = $asset.name
+        Write-Info "Found: $archive"
+    }
     $archiveUrl = "$baseUrl/$archive"
     $checksumsUrl = "$baseUrl/sha256sums.txt"
 

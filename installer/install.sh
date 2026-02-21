@@ -16,6 +16,7 @@ set -euo pipefail
 REPO="true-async/releases"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.php-trueasync}"
 VERSION="${VERSION:-latest}"
+PHP_VERSION="${PHP_VERSION:-}"  # optional, e.g. "8.6"; auto-detected from release assets if not set
 SKIP_VERIFY="${SKIP_VERIFY:-false}"
 SET_DEFAULT="${SET_DEFAULT:-false}"
 VERSION_FILE=".trueasync-version"
@@ -140,8 +141,26 @@ do_install() {
 
     # Determine archive name
     local ext="tar.gz"
-    local archive="php-trueasync-${version_num}-${platform}.${ext}"
+    local archive
     local base_url="https://github.com/${REPO}/releases/download/${VERSION}"
+    if [[ -n "$PHP_VERSION" ]]; then
+        archive="php-trueasync-${version_num}-php${PHP_VERSION}-${platform}.${ext}"
+    else
+        # Auto-detect from release assets
+        info "Detecting PHP version from release assets..."
+        local api_url="https://api.github.com/repos/${REPO}/releases/tags/${VERSION}"
+        local downloader
+        downloader=$(get_downloader)
+        if [[ "$downloader" == "curl" ]]; then
+            archive=$(curl -fsSL "$api_url" | grep '"name"' | grep "${platform}" | grep -v debug | head -1 | sed 's/.*"name": *"//;s/".*//')
+        else
+            archive=$(wget -qO- "$api_url" | grep '"name"' | grep "${platform}" | grep -v debug | head -1 | sed 's/.*"name": *"//;s/".*//')
+        fi
+        if [[ -z "$archive" ]]; then
+            error "No release asset found for platform: ${platform}. Use PHP_VERSION=8.6 to specify a PHP version."
+        fi
+        info "Found: $archive"
+    fi
     local archive_url="${base_url}/${archive}"
     local checksums_url="${base_url}/sha256sums.txt"
 
