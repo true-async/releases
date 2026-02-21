@@ -11,38 +11,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Read build-config.json
-        id: read
-        run: |
-          echo "php_src_repo=$(jq -r '.php_src.repo' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "async_repo=$(jq -r '.extensions.async.repo' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "common_flags=$(jq -r '.configure.common | join(" ")' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "linux_flags=$(jq -r '.configure.linux | join(" ")' build-config.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout php-src
+      - name: Checkout php-src (true-async branch)
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.read.outputs.php_src_repo }}
-          ref: ${{ steps.read.outputs.php_src_branch }}
+          repository: true-async/php-src
+          ref: true-async
           path: php-src
           fetch-depth: 1
 
-      - name: Checkout async extension into php-src/ext/async
+      - name: Checkout async extension into php-src/ext/async (main)
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.read.outputs.async_repo }}
-          ref: ${{ steps.read.outputs.async_branch }}
+          repository: true-async/php-async
+          ref: main
           path: php-src/ext/async
           fetch-depth: 1
+
+      - name: Set configure flags
+        id: flags
+        run: |
+          echo "common_flags=--enable-zts --enable-async --enable-phpdbg --enable-bcmath --enable-calendar --enable-exif --enable-ftp --enable-intl --enable-mbstring --enable-pdo --enable-shmop --enable-soap --enable-sockets --with-bz2 --with-curl --with-gettext --with-gmp --with-mysqli=mysqlnd --with-openssl --with-pdo-mysql=mysqlnd --with-pdo-pgsql --with-pdo-sqlite --with-pgsql --with-sqlite3 --with-xsl --with-zlib" >> "$GITHUB_OUTPUT"
+          echo "linux_flags=--enable-gd --with-jpeg --with-webp --with-freetype --with-zip --with-sodium --with-readline --with-tidy --with-ldap" >> "$GITHUB_OUTPUT"
+
+      - name: Install build dependencies
+        run: |
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             autoconf automake bison re2c pkg-config build-essential git curl wget \
-            libxml2-dev libsqlite3-dev libcurl4-openssl-dev libssl-dev libargon2-dev dos2unix jq
+            libxml2-dev libsqlite3-dev libcurl4-openssl-dev libssl-dev libargon2-dev dos2unix jq \
+            cmake ninja-build
+
+      - name: Build libuv from source
+        run: |
+          wget https://github.com/libuv/libuv/archive/v1.49.0.tar.gz
+          tar -xzf v1.49.0.tar.gz
+          cd libuv-1.49.0
+          mkdir build && cd build
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          ninja
+          sudo ninja install
+          sudo ldconfig
 
       - name: Run debug build
         run: |
