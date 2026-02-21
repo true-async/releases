@@ -11,6 +11,7 @@
 .NOTES
     Set $env:INSTALL_DIR to customize installation path.
     Set $env:VERSION to install a specific version (e.g., "v0.1.0").
+    Set $env:PHP_VERSION to specify a PHP version (e.g., "8.6").
     Set $env:SET_DEFAULT = "true" to add to PATH as default php.
 #>
 
@@ -20,7 +21,7 @@ $ProgressPreference = "SilentlyContinue"
 $Repo = "true-async/releases"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "$env:LOCALAPPDATA\php-trueasync" }
 $Version = if ($env:VERSION) { $env:VERSION } else { "latest" }
-$PhpVersion = $env:PHP_VERSION  # optional, e.g. "8.6"; auto-detected from release assets if not set
+$PhpVersion = $env:PHP_VERSION
 $SkipVerify = $env:SKIP_VERIFY -eq "true"
 $SetDefault = $env:SET_DEFAULT -eq "true"
 $VersionFile = ".trueasync-version"
@@ -31,7 +32,6 @@ function Write-Ok    { param($msg) Write-Host "[OK] " -ForegroundColor Green -No
 function Write-Warn  { param($msg) Write-Host "[WARN] " -ForegroundColor Yellow -NoNewline; Write-Host $msg }
 function Write-Err   { param($msg) Write-Host "[ERROR] " -ForegroundColor Red -NoNewline; Write-Host $msg; exit 1 }
 
-# --- Get latest version (including pre-releases) ---
 function Get-LatestVersion {
     $apiUrl = "https://api.github.com/repos/$Repo/releases"
     $response = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "TrueAsync-Installer" }
@@ -39,7 +39,6 @@ function Get-LatestVersion {
     return $response[0].tag_name
 }
 
-# --- Get installed version ---
 function Get-InstalledVersion {
     $vfile = Join-Path $InstallDir $VersionFile
     if (Test-Path $vfile) {
@@ -48,104 +47,90 @@ function Get-InstalledVersion {
     return ""
 }
 
-# --- Verify SHA256 ---
 function Test-Checksum {
-    param(
-        [string]$File,
-        [string]$Expected
-    )
-
+    param([string]$File, [string]$Expected)
     $actual = (Get-FileHash -Path $File -Algorithm SHA256).Hash.ToLower()
     $expected = $Expected.ToLower()
-
     if ($actual -ne $expected) {
         Write-Err "Checksum mismatch!`n  Expected: $expected`n  Actual:   $actual"
     }
-
     Write-Ok "Checksum verified"
 }
 
-# --- Install management script ---
 function Install-ManagementScript {
     $scriptPath = Join-Path $InstallDir "php-trueasync.cmd"
 
-    $scriptContent = @'
-@echo off
-setlocal
+    $lines = @(
+        '@echo off'
+        'setlocal'
+        ''
+        'set "INSTALL_DIR=%~dp0"'
+        'set "INSTALL_DIR=%INSTALL_DIR:~0,-1%"'
+        'set "VERSION_FILE=%INSTALL_DIR%\.trueasync-version"'
+        ''
+        'if "%1"=="" goto :help'
+        'if "%1"=="update" goto :update'
+        'if "%1"=="version" goto :version'
+        'if "%1"=="uninstall" goto :uninstall'
+        'if "%1"=="help" goto :help'
+        'if "%1"=="--help" goto :help'
+        'if "%1"=="-h" goto :help'
+        ''
+        'echo Unknown command: %1'
+        "echo Run 'php-trueasync help' for usage."
+        'exit /b 1'
+        ''
+        ':update'
+        'echo Checking for updates...'
+        'if exist "%VERSION_FILE%" ('
+        '    set /p CURRENT=<"%VERSION_FILE%"'
+        '    echo Current version: %CURRENT%'
+        ') else ('
+        '    echo Current version: unknown'
+        ')'
+        'set "TRUEASYNC_CMD=update"'
+        'set "INSTALL_DIR=%INSTALL_DIR%"'
+        'powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/true-async/releases/master/installer/install.ps1 | iex"'
+        'goto :eof'
+        ''
+        ':version'
+        'if exist "%VERSION_FILE%" ('
+        '    type "%VERSION_FILE%"'
+        ') else ('
+        '    echo unknown'
+        ')'
+        'goto :eof'
+        ''
+        ':uninstall'
+        'echo Uninstalling TrueAsync PHP from %INSTALL_DIR%...'
+        'powershell -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''User''); $p=($p -split '';'' | Where-Object { $_ -notlike ''*php-trueasync*'' }) -join '';''; [Environment]::SetEnvironmentVariable(''Path'',$p,''User'')"'
+        'echo Cleaned PATH'
+        'start /b cmd /c "timeout /t 1 /nobreak >nul & rd /s /q ""%INSTALL_DIR%"""'
+        'echo TrueAsync PHP uninstalled.'
+        'echo Restart your terminal to apply PATH changes.'
+        'goto :eof'
+        ''
+        ':help'
+        'echo TrueAsync PHP Manager'
+        'echo.'
+        'echo Usage: php-trueasync ^<command^>'
+        'echo.'
+        'echo Commands:'
+        'echo   update      Check for updates and install the latest version'
+        'echo   version     Show the installed version'
+        'echo   uninstall   Remove TrueAsync PHP and clean up PATH'
+        'echo   help        Show this help message'
+        'goto :eof'
+    )
 
-set "INSTALL_DIR=%~dp0"
-set "INSTALL_DIR=%INSTALL_DIR:~0,-1%"
-set "VERSION_FILE=%INSTALL_DIR%\.trueasync-version"
-
-if "%1"=="" goto :help
-if "%1"=="update" goto :update
-if "%1"=="version" goto :version
-if "%1"=="uninstall" goto :uninstall
-if "%1"=="help" goto :help
-if "%1"=="--help" goto :help
-if "%1"=="-h" goto :help
-
-echo Unknown command: %1
-echo Run 'php-trueasync help' for usage.
-exit /b 1
-
-:update
-echo Checking for updates...
-if exist "%VERSION_FILE%" (
-    set /p CURRENT=<"%VERSION_FILE%"
-    echo Current version: %CURRENT%
-) else (
-    echo Current version: unknown
-)
-set "TRUEASYNC_CMD=update"
-set "INSTALL_DIR=%INSTALL_DIR%"
-powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/true-async/releases/master/installer/install.ps1 | iex"
-goto :eof
-
-:version
-if exist "%VERSION_FILE%" (
-    type "%VERSION_FILE%"
-) else (
-    echo unknown
-)
-goto :eof
-
-:uninstall
-echo Uninstalling TrueAsync PHP from %INSTALL_DIR%...
-
-REM Remove from PATH
-for /f "tokens=*" %%a in ('powershell -Command "[Environment]::GetEnvironmentVariable('Path','User')"') do set "UPATH=%%a"
-powershell -Command "$p=[Environment]::GetEnvironmentVariable('Path','User'); $p=($p -split ';' | Where-Object { $_ -notlike '*php-trueasync*' }) -join ';'; [Environment]::SetEnvironmentVariable('Path',$p,'User')"
-echo Cleaned PATH
-
-REM Schedule self-deletion
-start /b cmd /c "timeout /t 1 /nobreak >nul & rd /s /q "%INSTALL_DIR%""
-echo TrueAsync PHP uninstalled.
-echo Restart your terminal to apply PATH changes.
-goto :eof
-
-:help
-echo TrueAsync PHP Manager
-echo.
-echo Usage: php-trueasync ^<command^>
-echo.
-echo Commands:
-echo   update      Check for updates and install the latest version
-echo   version     Show the installed version
-echo   uninstall   Remove TrueAsync PHP and clean up PATH
-echo   help        Show this help message
-goto :eof
-'@
-
-    Set-Content -Path $scriptPath -Value $scriptContent -Encoding ASCII
+    $scriptContent = $lines -join "`r`n"
+    [System.IO.File]::WriteAllText($scriptPath, $scriptContent, [System.Text.Encoding]::ASCII)
 }
 
-# --- Do install ---
 function Do-Install {
     $platform = "windows-x64"
     Write-Info "Platform: $platform"
 
-    # Resolve version
     if ($Version -eq "latest") {
         Write-Info "Fetching latest version..."
         $script:Version = Get-LatestVersion
@@ -157,12 +142,11 @@ function Do-Install {
     $versionNum = $Version.TrimStart("v")
     Write-Info "Version: $Version"
 
-    # Determine archive name
     $baseUrl = "https://github.com/$Repo/releases/download/$Version"
+
     if ($PhpVersion) {
         $archive = "php-trueasync-${versionNum}-php${PhpVersion}-${platform}.zip"
     } else {
-        # Auto-detect from release assets
         Write-Info "Detecting PHP version from release assets..."
         $releaseUrl = "https://api.github.com/repos/$Repo/releases/tags/$Version"
         $release = Invoke-RestMethod -Uri $releaseUrl -Headers @{ "User-Agent" = "TrueAsync-Installer" }
@@ -170,26 +154,24 @@ function Do-Install {
             $_.name -match "^php-trueasync-.*-${platform}\.zip$" -and $_.name -notmatch "-debug"
         } | Select-Object -First 1
         if (-not $asset) {
-            Write-Err "No release asset found for platform: $platform. Use `$env:PHP_VERSION to specify a PHP version."
+            Write-Err "No release asset found for platform: $platform. Set PHP_VERSION env var to specify PHP version."
         }
         $archive = $asset.name
         Write-Info "Found: $archive"
     }
+
     $archiveUrl = "$baseUrl/$archive"
     $checksumsUrl = "$baseUrl/sha256sums.txt"
 
-    # Create temp directory
     $tmpDir = Join-Path $env:TEMP "php-trueasync-install-$(Get-Random)"
     New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
 
     try {
-        # Download archive
         Write-Info "Downloading $archive..."
         $archivePath = Join-Path $tmpDir $archive
         Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath -UseBasicParsing
         Write-Ok "Downloaded"
 
-        # Verify checksum
         if (-not $SkipVerify) {
             Write-Info "Downloading checksums..."
             $checksumsPath = Join-Path $tmpDir "sha256sums.txt"
@@ -204,25 +186,19 @@ function Do-Install {
             }
         }
 
-        # Install
         Write-Info "Installing to $InstallDir..."
 
         if (Test-Path $InstallDir) {
             Remove-Item -Recurse -Force $InstallDir
         }
         New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-
         Expand-Archive -Path $archivePath -DestinationPath $InstallDir -Force
 
-        # Save version marker
         Set-Content -Path (Join-Path $InstallDir $VersionFile) -Value $Version
-
         Write-Ok "Installed to $InstallDir"
 
-        # Install management script
         Install-ManagementScript
 
-        # Add to PATH (only if explicitly requested)
         if ($SetDefault) {
             $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
             if ($currentPath -notlike "*php-trueasync*") {
@@ -236,7 +212,6 @@ function Do-Install {
             Write-Info "Binary location: $(Join-Path $InstallDir 'php.exe')"
         }
 
-        # Verify
         Write-Host ""
         Write-Info "Verifying installation..."
         $phpExe = Join-Path $InstallDir "php.exe"
@@ -245,25 +220,23 @@ function Do-Install {
             Write-Host ""
             Write-Ok "TrueAsync PHP $Version installed successfully!"
         } else {
-            $phpExe = Get-ChildItem -Path $InstallDir -Recurse -Filter "php.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($phpExe) {
-                & $phpExe.FullName -v
+            $found = Get-ChildItem -Path $InstallDir -Recurse -Filter "php.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+                & $found.FullName -v
                 Write-Host ""
                 Write-Ok "TrueAsync PHP $Version installed successfully!"
-                Write-Warn "PHP binary found at: $($phpExe.FullName)"
+                Write-Warn "PHP binary found at: $($found.FullName)"
             } else {
-                Write-Warn "php.exe not found in $InstallDir — check the archive structure"
+                Write-Warn "php.exe not found in $InstallDir - check the archive structure"
             }
         }
-    }
-    finally {
+    } finally {
         Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
     }
 
     Write-Host ""
 }
 
-# --- Do update ---
 function Do-Update {
     $current = Get-InstalledVersion
 
@@ -292,7 +265,6 @@ function Do-Update {
     Do-Install
 }
 
-# --- Do uninstall ---
 function Do-Uninstall {
     if (-not (Test-Path $InstallDir)) {
         Write-Warn "TrueAsync PHP is not installed at $InstallDir"
@@ -301,7 +273,6 @@ function Do-Uninstall {
 
     Write-Info "Uninstalling TrueAsync PHP from $InstallDir..."
 
-    # Remove from PATH
     $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $newPath = ($currentPath -split ';' | Where-Object { $_ -notlike "*php-trueasync*" }) -join ';'
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
@@ -312,11 +283,10 @@ function Do-Uninstall {
     Write-Warn "Restart your terminal to apply PATH changes"
 }
 
-# === Main ===
 function Main {
     Write-Host ""
     Write-Host "=================================" -ForegroundColor Cyan
-    Write-Host "   TrueAsync PHP Installer" -ForegroundColor Cyan
+    Write-Host "   TrueAsync PHP Installer"       -ForegroundColor Cyan
     Write-Host "=================================" -ForegroundColor Cyan
     Write-Host ""
 
