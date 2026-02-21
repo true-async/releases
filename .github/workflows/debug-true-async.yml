@@ -5,25 +5,35 @@ on:
 
 jobs:
   debug-linux:
-    name: Debug build (php-src@true-async + php-async@main)
+    name: Debug build (configured from build-config.json)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Checkout php-src (true-async branch)
+      - name: Read build-config.json
+        id: read
+        run: |
+          echo "php_src_repo=$(jq -r '.php_src.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "async_repo=$(jq -r '.extensions.async.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "common_flags=$(jq -r '.configure.common | join(" ")' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "linux_flags=$(jq -r '.configure.linux | join(" ")' build-config.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout php-src
         uses: actions/checkout@v4
         with:
-          repository: true-async/php-src
-          ref: true-async
+          repository: ${{ steps.read.outputs.php_src_repo }}
+          ref: ${{ steps.read.outputs.php_src_branch }}
           path: php-src
           fetch-depth: 1
 
-      - name: Checkout php-async ext (main) into php-src/ext/async
+      - name: Checkout async extension into php-src/ext/async
         uses: actions/checkout@v4
         with:
-          repository: true-async/php-async
-          ref: main
+          repository: ${{ steps.read.outputs.async_repo }}
+          ref: ${{ steps.read.outputs.async_branch }}
           path: php-src/ext/async
           fetch-depth: 1
 
@@ -32,13 +42,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             autoconf automake bison re2c pkg-config build-essential git curl wget \
-            libxml2-dev libsqlite3-dev libcurl4-openssl-dev libssl-dev libargon2-dev dos2unix
+            libxml2-dev libsqlite3-dev libcurl4-openssl-dev libssl-dev libargon2-dev dos2unix jq
 
       - name: Run debug build
         run: |
           cd php-src
           dos2unix ext/async/config.m4 || true
           ./buildconf --force
-          ./configure --prefix=/usr/local --enable-debug --enable-async --with-openssl --with-curl --with-sqlite3
+          FLAGS="${{ steps.read.outputs.common_flags }} ${{ steps.read.outputs.linux_flags }} --enable-debug"
+          echo "Configure flags: $FLAGS"
+          eval "./configure --prefix=/usr/local $FLAGS"
           make -j$(nproc)
         timeout-minutes: 120
