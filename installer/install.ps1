@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     TrueAsync PHP Installer for Windows.
@@ -9,58 +9,267 @@
     Update:    php-trueasync update
     Uninstall: php-trueasync uninstall
 .NOTES
-    Set $env:INSTALL_DIR to customize installation path.
-    Set $env:VERSION to install a specific version (e.g., "v0.1.0").
-    Set $env:PHP_VERSION to specify a PHP version (e.g., "8.6").
-    Set $env:SET_DEFAULT = "true" to add to PATH as default php.
+    Environment variables:
+      INSTALL_DIR      Custom installation path
+      VERSION          Specific version to install (e.g. "v0.1.0")
+      PHP_VERSION      Specific PHP version (e.g. "8.6")
+      SET_DEFAULT      "true"/"false" to control PATH (default: prompt)
+      DEBUG_BUILD      "true" to install debug build (default: prompt)
+      SKIP_VERIFY      "true" to skip checksum verification
+      NON_INTERACTIVE  "true" to skip all prompts and use defaults
 #>
 
 $ErrorActionPreference = "Stop"
-$ProgressPreference = "SilentlyContinue"
+$ProgressPreference    = "SilentlyContinue"
 
-$Repo = "true-async/releases"
-$InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "$env:LOCALAPPDATA\php-trueasync" }
-$Version = if ($env:VERSION) { $env:VERSION } else { "latest" }
-$PhpVersion = $env:PHP_VERSION
-$SkipVerify = $env:SKIP_VERIFY -eq "true"
-$SetDefault = $env:SET_DEFAULT -eq "true"
+# ── Config ───────────────────────────────────────────────────────────────────
+
+$Repo        = "true-async/releases"
+$DefaultDir  = Join-Path $env:LOCALAPPDATA "php-trueasync"
+$InstallDir  = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { $DefaultDir }
+$Version     = if ($env:VERSION)     { $env:VERSION }     else { "latest" }
+$PhpVersion  = $env:PHP_VERSION
+$SkipVerify  = $env:SKIP_VERIFY -eq "true"
+$SetDefault  = $env:SET_DEFAULT   # "true" | "false" | empty = prompt
+$DebugBuild  = $env:DEBUG_BUILD   # "true" | "false" | empty = prompt
 $VersionFile = ".trueasync-version"
-$Command = if ($env:TRUEASYNC_CMD) { $env:TRUEASYNC_CMD } else { "install" }
+$Command     = if ($env:TRUEASYNC_CMD) { $env:TRUEASYNC_CMD } else { "install" }
 
-function Write-Info  { param($msg) Write-Host "[INFO] " -ForegroundColor Cyan -NoNewline; Write-Host $msg }
-function Write-Ok    { param($msg) Write-Host "[OK] " -ForegroundColor Green -NoNewline; Write-Host $msg }
-function Write-Warn  { param($msg) Write-Host "[WARN] " -ForegroundColor Yellow -NoNewline; Write-Host $msg }
-function Write-Err   { param($msg) Write-Host "[ERROR] " -ForegroundColor Red -NoNewline; Write-Host $msg; exit 1 }
+try {
+    $IsInteractive = [Environment]::UserInteractive -and
+                     (-not ($env:NON_INTERACTIVE -eq "true")) -and
+                     (-not [Console]::IsInputRedirected)
+} catch {
+    $IsInteractive = $false
+}
+
+# ── UI helpers ────────────────────────────────────────────────────────────────
+
+$_step  = 0
+$_total = 0
+
+function Write-Header {
+    Write-Host ""
+    Write-Host "  ╔══════════════════════════════════════╗" -ForegroundColor Cyan
+    Write-Host "  ║   " -ForegroundColor Cyan -NoNewline
+    Write-Host "TrueAsync PHP" -ForegroundColor White -NoNewline
+    Write-Host " Installer" -ForegroundColor DarkGray -NoNewline
+    Write-Host "            ║" -ForegroundColor Cyan
+    Write-Host "  ╚══════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+function Set-TotalSteps { param($n) $script:_total = $n; $script:_step = 0 }
+
+function Write-Pending {
+    param([string]$Label)
+    $script:_step++
+    Write-Host ("  · [{0}/{1}]  {2}..." -f $script:_step, $script:_total, $Label) `
+        -ForegroundColor DarkGray -NoNewline
+}
+
+function Write-Done {
+    param([string]$Label, [string]$Detail = "", [string]$DetailColor = "DarkGray")
+    Write-Host "`r  " -NoNewline
+    Write-Host "✓" -ForegroundColor Green -NoNewline
+    Write-Host (" [{0}/{1}]  {2}" -f $script:_step, $script:_total, $Label) -NoNewline
+    if ($Detail) {
+        Write-Host "  " -NoNewline
+        Write-Host $Detail -ForegroundColor $DetailColor -NoNewline
+    }
+    Write-Host "          "  # trailing spaces to clear pending-line remnants + newline
+}
+
+function Write-StepFail {
+    param([string]$Label, [string]$Detail = "")
+    Write-Host "`r  " -NoNewline
+    Write-Host "✗" -ForegroundColor Red -NoNewline
+    Write-Host (" [{0}/{1}]  {2}" -f $script:_step, $script:_total, $Label) -NoNewline
+    if ($Detail) { Write-Host "  $Detail" -ForegroundColor Red -NoNewline }
+    Write-Host ""
+}
+
+function Write-Ok   { param($Msg); Write-Host "  " -NoNewline; Write-Host "✓" -ForegroundColor Green -NoNewline; Write-Host "  $Msg" }
+function Write-Info { param($Msg); Write-Host "  " -NoNewline; Write-Host "·" -ForegroundColor DarkGray -NoNewline; Write-Host "  $Msg" -ForegroundColor DarkGray }
+function Write-Warn { param($Msg); Write-Host "  " -NoNewline; Write-Host "!" -ForegroundColor Yellow -NoNewline; Write-Host "  $Msg" -ForegroundColor Yellow }
+
+function Write-Fail {
+    param($Msg)
+    Write-Host ""
+    Write-Host "  " -NoNewline
+    Write-Host "✗" -ForegroundColor Red -NoNewline
+    Write-Host "  $Msg" -ForegroundColor Red
+    exit 1
+}
+
+function Write-Summary {
+    param([System.Collections.Specialized.OrderedDictionary]$Items)
+    $maxInner  = 58   # max inner width of the box
+    $keyLen    = ($Items.Keys | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
+    $maxValLen = $maxInner - $keyLen - 7   # 7 = 2 left pad + 3 separator + 2 right pad
+
+    # Truncate long values with ellipsis
+    $rows = [ordered]@{}
+    foreach ($e in $Items.GetEnumerator()) {
+        $val = $e.Value
+        if ($val.Length -gt $maxValLen) { $val = $val.Substring(0, $maxValLen - 3) + "..." }
+        $rows[$e.Key] = $val
+    }
+
+    $valLen = ($rows.Values | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
+    $inner  = $keyLen + $valLen + 7
+    $border = "─" * $inner
+
+    Write-Host ""
+    Write-Host ("  ╭" + $border + "╮") -ForegroundColor DarkGray
+    foreach ($e in $rows.GetEnumerator()) {
+        Write-Host "  │  " -ForegroundColor DarkGray -NoNewline
+        Write-Host ($e.Key.PadRight($keyLen)) -ForegroundColor DarkGray -NoNewline
+        Write-Host "   " -NoNewline
+        Write-Host ($e.Value.PadRight($valLen)) -NoNewline
+        Write-Host "  │" -ForegroundColor DarkGray
+    }
+    Write-Host ("  ╰" + $border + "╯") -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+# Pre-install summary (rustup-style: show what WILL happen, before doing it)
+function Write-PreInstall {
+    param(
+        [string]$Ver,
+        [string]$Dir,
+        [string]$Platform,
+        [bool]$PathFlag,
+        [bool]$Debug
+    )
+    $items = [ordered]@{}
+    $items["Version"]  = $Ver
+    $items["Build"]    = if ($Debug) { "debug" } else { "release" }
+    $items["Platform"] = $Platform
+    $items["Location"] = $Dir
+    $items["PATH"]     = if ($PathFlag) { "will be added" } else { "skip" }
+    Write-Summary $items
+}
+
+function Read-Input {
+    param([string]$Prompt, [string]$Default = "")
+    if (-not $IsInteractive) { return $Default }
+    try {
+        $val = Read-Host $Prompt
+        if ([string]::IsNullOrWhiteSpace($val)) { return $Default }
+        return $val.Trim()
+    } catch { return $Default }
+}
+
+function Read-YesNo {
+    param([string]$Prompt, [bool]$Default = $true)
+    if (-not $IsInteractive) { return $Default }
+    try {
+        $hint = if ($Default) { "y/n [yes]" } else { "y/n [no]" }
+        $val  = Read-Host "$Prompt $hint"
+        if ([string]::IsNullOrWhiteSpace($val)) { return $Default }
+        return $val -match "^[yY]"
+    } catch { return $Default }
+}
+
+# ── Core functions ────────────────────────────────────────────────────────────
 
 function Get-LatestVersion {
-    $apiUrl = "https://api.github.com/repos/$Repo/releases"
-    $response = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "TrueAsync-Installer" }
-    if ($response.Count -eq 0) { return $null }
-    return $response[0].tag_name
+    $url      = "https://api.github.com/repos/$Repo/releases"
+    $releases = Invoke-RestMethod -Uri $url -Headers @{ "User-Agent" = "TrueAsync-Installer" }
+    if ($releases.Count -eq 0) { return $null }
+    return $releases[0].tag_name
 }
 
 function Get-InstalledVersion {
     $vfile = Join-Path $InstallDir $VersionFile
-    if (Test-Path $vfile) {
-        return (Get-Content $vfile -Raw).Trim()
-    }
+    if (Test-Path $vfile) { return (Get-Content $vfile -Raw).Trim() }
     return ""
+}
+
+function Get-FormattedSize {
+    param([string]$Path)
+    $bytes = (Get-Item $Path).Length
+    if ($bytes -ge 1MB) { return "{0:F1} MiB" -f ($bytes / 1MB) }
+    return "{0:F0} KiB" -f ($bytes / 1KB)
+}
+
+# Download with live progress bar using async WebClient + event subscribers.
+# The -Action script blocks run in separate runspaces; a Synchronized hashtable
+# is used to safely share progress data back to the main thread.
+function Invoke-DownloadWithProgress {
+    param(
+        [string]$Url,
+        [string]$OutFile,
+        [int]$StepNum,
+        [int]$StepTotal
+    )
+
+    $barW  = 24
+    $wc    = New-Object System.Net.WebClient
+    $wc.Headers.Add("User-Agent", "TrueAsync-Installer")
+
+    $state = [hashtable]::Synchronized(@{ Pct = 0; Bytes = 0L; Done = $false; Err = $null })
+    $sid   = "TrueAsync_DL_$(Get-Random)"
+
+    $null = Register-ObjectEvent -InputObject $wc -EventName DownloadProgressChanged `
+        -SourceIdentifier "${sid}_prog" -MessageData $state -Action {
+            $d = $Event.MessageData
+            $d.Pct   = [Math]::Max(0, $EventArgs.ProgressPercentage)
+            $d.Bytes = $EventArgs.BytesReceived
+        }
+    $null = Register-ObjectEvent -InputObject $wc -EventName DownloadFileCompleted `
+        -SourceIdentifier "${sid}_done" -MessageData $state -Action {
+            $d = $Event.MessageData
+            $d.Err  = $EventArgs.Error
+            $d.Done = $true
+        }
+
+    try {
+        $wc.DownloadFileAsync([uri]$Url, $OutFile)
+
+        while (-not $state.Done) {
+            $pct    = $state.Pct
+            $bytes  = $state.Bytes
+            $filled = [Math]::Min($barW, [Math]::Floor($barW * $pct / 100))
+            $bar    = ("=" * $filled).PadRight($barW)
+            $mb     = "{0:F1}" -f ($bytes / 1MB)
+            Write-Host ("`r  · [{0}/{1}]  Downloading  [{2}] {3}  {4} MiB   " -f `
+                $StepNum, $StepTotal, $bar, "$pct%".PadLeft(4), $mb) -ForegroundColor DarkGray -NoNewline
+            Start-Sleep -Milliseconds 100
+        }
+
+        if ($state.Err) { throw $state.Err }
+
+    } finally {
+        Unregister-Event -SourceIdentifier "${sid}_prog" -ErrorAction SilentlyContinue
+        Unregister-Event -SourceIdentifier "${sid}_done" -ErrorAction SilentlyContinue
+        Remove-Job -Name "${sid}_prog" -Force -ErrorAction SilentlyContinue
+        Remove-Job -Name "${sid}_done" -Force -ErrorAction SilentlyContinue
+        $wc.Dispose()
+    }
 }
 
 function Test-Checksum {
     param([string]$File, [string]$Expected)
     $actual = (Get-FileHash -Path $File -Algorithm SHA256).Hash.ToLower()
-    $expected = $Expected.ToLower()
-    if ($actual -ne $expected) {
-        Write-Err "Checksum mismatch!`n  Expected: $expected`n  Actual:   $actual"
+    if ($actual -ne $Expected.ToLower()) {
+        Write-StepFail "Checksum mismatch"
+        Write-Host ""
+        Write-Host "    expected  $Expected" -ForegroundColor Red
+        Write-Host "    actual    $actual"   -ForegroundColor Red
+        exit 1
     }
-    Write-Ok "Checksum verified"
 }
 
 function Install-ManagementScript {
     $scriptPath = Join-Path $InstallDir "php-trueasync.cmd"
 
-    $lines = @(
+    # The PATH-cleanup line needs embedded single quotes inside a double-quoted cmd argument.
+    # Use a double-quoted PS string with backtick-escaped $ and " to avoid all quoting issues.
+    $pathClean = "powershell -ExecutionPolicy Bypass -Command `"`$p=[Environment]::GetEnvironmentVariable('Path','User'); `$p=(`$p -split ';' | Where-Object { `$_ -notlike '*php-trueasync*' }) -join ';'; [Environment]::SetEnvironmentVariable('Path',`$p,'User')`""
+
+    $lines = [string[]]@(
         '@echo off'
         'setlocal'
         ''
@@ -89,7 +298,6 @@ function Install-ManagementScript {
         '    echo Current version: unknown'
         ')'
         'set "TRUEASYNC_CMD=update"'
-        'set "INSTALL_DIR=%INSTALL_DIR%"'
         'powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/true-async/releases/master/installer/install.ps1 | iex"'
         'goto :eof'
         ''
@@ -103,7 +311,7 @@ function Install-ManagementScript {
         ''
         ':uninstall'
         'echo Uninstalling TrueAsync PHP from %INSTALL_DIR%...'
-        'powershell -ExecutionPolicy Bypass -Command "$p=[Environment]::GetEnvironmentVariable(''Path'',''User''); $p=($p -split '';'' | Where-Object { $_ -notlike ''*php-trueasync*'' }) -join '';''; [Environment]::SetEnvironmentVariable(''Path'',$p,''User'')"'
+        $pathClean
         'echo Cleaned PATH'
         'start /b cmd /c "timeout /t 1 /nobreak >nul & rd /s /q ""%INSTALL_DIR%"""'
         'echo TrueAsync PHP uninstalled.'
@@ -123,147 +331,246 @@ function Install-ManagementScript {
         'goto :eof'
     )
 
-    $scriptContent = $lines -join "`r`n"
-    [System.IO.File]::WriteAllText($scriptPath, $scriptContent, [System.Text.Encoding]::ASCII)
+    $content = $lines -join "`r`n"
+    [System.IO.File]::WriteAllText($scriptPath, $content, [System.Text.Encoding]::ASCII)
 }
+
+# ── Install ───────────────────────────────────────────────────────────────────
 
 function Do-Install {
     $platform = "windows-x64"
-    Write-Info "Platform: $platform"
+
+    Write-Info "Platform   $platform"
+    Write-Host ""
+
+    # ── Pre-flight: resolve version tag only ─────────────────────────────────
+
+    Write-Host "  · Resolving version..." -ForegroundColor DarkGray -NoNewline
 
     if ($Version -eq "latest") {
-        Write-Info "Fetching latest version..."
         $script:Version = Get-LatestVersion
-        if (-not $Version) {
-            Write-Err "Could not determine latest version"
-        }
+        if (-not $script:Version) { Write-Fail "Could not determine latest version" }
     }
 
-    $versionNum = $Version.TrimStart("v")
-    Write-Info "Version: $Version"
+    Write-Host "`r  " -NoNewline
+    Write-Host "✓" -ForegroundColor Green -NoNewline
+    Write-Host " Resolved  " -NoNewline
+    Write-Host $script:Version -ForegroundColor White -NoNewline
+    Write-Host "                    "  # clear trailing chars + newline
 
-    $baseUrl = "https://github.com/$Repo/releases/download/$Version"
+    # ── Interactive prompts ───────────────────────────────────────────────────
 
-    if ($PhpVersion) {
-        $archive = "php-trueasync-${versionNum}-php${PhpVersion}-${platform}.zip"
+    Write-Host ""
+
+    if (-not $env:INSTALL_DIR) {
+        $answer = Read-Input "  Install location [$script:InstallDir]" $script:InstallDir
+        $script:InstallDir = $answer
+    }
+
+    $useDebug = $false
+    if ($null -ne $DebugBuild -and $DebugBuild -ne "") {
+        $useDebug = ($DebugBuild -eq "true")
     } else {
-        Write-Info "Detecting PHP version from release assets..."
-        $releaseUrl = "https://api.github.com/repos/$Repo/releases/tags/$Version"
-        $release = Invoke-RestMethod -Uri $releaseUrl -Headers @{ "User-Agent" = "TrueAsync-Installer" }
-        $asset = $release.assets | Where-Object {
-            $_.name -match "^php-trueasync-.*-${platform}\.zip$" -and $_.name -notmatch "-debug"
+        $useDebug = Read-YesNo "  Debug build?" $false
+    }
+
+    $addToPath = $false
+    if ($null -ne $SetDefault -and $SetDefault -ne "") {
+        $addToPath = ($SetDefault -eq "true")
+    } else {
+        $addToPath = Read-YesNo "  Add to PATH?" $false
+    }
+
+    # ── Pre-install summary (rustup-style: show what WILL happen) ────────────
+
+    Write-PreInstall -Ver $script:Version -Dir $script:InstallDir -Platform $platform -PathFlag $addToPath -Debug $useDebug
+
+    if ($IsInteractive) {
+        $proceed = Read-YesNo "  Proceed with installation?" $true
+        if (-not $proceed) {
+            Write-Host ""
+            Write-Info "Installation cancelled"
+            Write-Host ""
+            return
+        }
+        Write-Host ""
+    }
+
+    # ── Resolve exact asset (now we know debug preference) ───────────────────
+
+    $versionNum = $script:Version.TrimStart("v")
+    $baseUrl    = "https://github.com/$Repo/releases/download/$($script:Version)"
+
+    if ($script:PhpVersion) {
+        $suffix  = if ($useDebug) { "-debug" } else { "" }
+        $archive = "php-trueasync-${versionNum}-php$($script:PhpVersion)-${platform}${suffix}.zip"
+    } else {
+        $releaseUrl = "https://api.github.com/repos/$Repo/releases/tags/$($script:Version)"
+        $release    = Invoke-RestMethod -Uri $releaseUrl -Headers @{ "User-Agent" = "TrueAsync-Installer" }
+        $asset      = $release.assets | Where-Object {
+            if ($useDebug) {
+                $_.name -match "^php-trueasync-.*-${platform}-debug\.zip$"
+            } else {
+                $_.name -match "^php-trueasync-.*-${platform}\.zip$" -and $_.name -notmatch "-debug"
+            }
         } | Select-Object -First 1
         if (-not $asset) {
-            Write-Err "No release asset found for platform: $platform. Set PHP_VERSION env var to specify PHP version."
+            $buildType = if ($useDebug) { "debug" } else { "release" }
+            Write-Fail "No $buildType asset found for $platform. Set PHP_VERSION to specify a PHP version."
         }
         $archive = $asset.name
-        Write-Info "Found: $archive"
     }
 
-    $archiveUrl = "$baseUrl/$archive"
+    # ── Numbered steps: Download → [Verify] → Install ────────────────────────
+
+    $numSteps = if ($SkipVerify) { 2 } else { 3 }
+    Set-TotalSteps $numSteps
+
+    $tmpDir       = Join-Path $env:TEMP "php-trueasync-install-$(Get-Random)"
+    $archiveUrl   = "$baseUrl/$archive"
     $checksumsUrl = "$baseUrl/sha256sums.txt"
 
-    $tmpDir = Join-Path $env:TEMP "php-trueasync-install-$(Get-Random)"
     New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
 
     try {
-        Write-Info "Downloading $archive..."
-        $archivePath = Join-Path $tmpDir $archive
-        Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath -UseBasicParsing
-        Write-Ok "Downloaded"
+        $archivePath  = Join-Path $tmpDir $archive
+        $checksumPath = Join-Path $tmpDir "sha256sums.txt"
 
+        # Step 1: Download with live progress bar
+        $script:_step++
+        Invoke-DownloadWithProgress -Url $archiveUrl -OutFile $archivePath -StepNum $script:_step -StepTotal $script:_total
+        $size = Get-FormattedSize $archivePath
+        Write-Done "Downloaded" $size
+
+        # Step 2: Verify checksum
         if (-not $SkipVerify) {
-            Write-Info "Downloading checksums..."
-            $checksumsPath = Join-Path $tmpDir "sha256sums.txt"
-            Invoke-WebRequest -Uri $checksumsUrl -OutFile $checksumsPath -UseBasicParsing
+            Write-Pending "Verifying checksum"
+            Invoke-WebRequest -Uri $checksumsUrl -OutFile $checksumPath -UseBasicParsing
 
-            $checksumLine = Get-Content $checksumsPath | Where-Object { $_ -match [regex]::Escape($archive) }
-            if ($checksumLine) {
-                $expected = ($checksumLine -split '\s+')[0]
+            $line = Get-Content $checksumPath | Where-Object { $_ -match [regex]::Escape($archive) }
+            if ($line) {
+                $expected = ($line -split '\s+')[0]
                 Test-Checksum -File $archivePath -Expected $expected
+                Write-Done "Checksum verified"
             } else {
-                Write-Warn "Checksum for $archive not found in sha256sums.txt"
+                Write-Done "Checksum" "not in manifest — skipped" "Yellow"
             }
         }
 
-        Write-Info "Installing to $InstallDir..."
+        # Step 3: Install
+        Write-Pending "Installing"
 
-        if (Test-Path $InstallDir) {
-            Remove-Item -Recurse -Force $InstallDir
+        if (Test-Path $script:InstallDir) {
+            # Stop any PHP processes using files in this directory before deleting
+            Get-Process -ErrorAction SilentlyContinue |
+                Where-Object { $_.Path -like "$($script:InstallDir)\*" } |
+                Stop-Process -Force -ErrorAction SilentlyContinue
+            # Retry loop — antivirus or OS may briefly hold handles after process exit
+            for ($r = 0; $r -lt 5; $r++) {
+                try { Remove-Item -Recurse -Force $script:InstallDir -ErrorAction Stop; break }
+                catch { if ($r -eq 4) { throw } Start-Sleep -Seconds 1 }
+            }
         }
-        New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-        Expand-Archive -Path $archivePath -DestinationPath $InstallDir -Force
-
-        Set-Content -Path (Join-Path $InstallDir $VersionFile) -Value $Version
-        Write-Ok "Installed to $InstallDir"
-
+        New-Item -ItemType Directory -Force -Path $script:InstallDir | Out-Null
+        Expand-Archive -Path $archivePath -DestinationPath $script:InstallDir -Force
+        Set-Content -Path (Join-Path $script:InstallDir $VersionFile) -Value $script:Version
         Install-ManagementScript
 
-        if ($SetDefault) {
-            $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-            if ($currentPath -notlike "*php-trueasync*") {
-                [Environment]::SetEnvironmentVariable("Path", "$InstallDir;$currentPath", "User")
-                $env:Path = "$InstallDir;$env:Path"
-                Write-Ok "Added $InstallDir to user PATH"
+        Write-Done "Installed" $script:InstallDir
+
+        # ── PATH ──────────────────────────────────────────────────────────────
+
+        $pathStatus = "not added"
+        if ($addToPath) {
+            $curPath = [Environment]::GetEnvironmentVariable("Path", "User")
+            if ($curPath -notlike "*php-trueasync*") {
+                [Environment]::SetEnvironmentVariable("Path", "$($script:InstallDir);$curPath", "User")
+                $env:Path = "$($script:InstallDir);$env:Path"
+                $pathStatus = "added"
+                Write-Host ""
                 Write-Warn "Restart your terminal for PATH changes to take effect"
+            } else {
+                $pathStatus = "already in PATH"
             }
-        } else {
-            Write-Info "PATH not modified (use SET_DEFAULT=true to add to PATH)"
-            Write-Info "Binary location: $(Join-Path $InstallDir 'php.exe')"
         }
 
+        # ── Verify installation ───────────────────────────────────────────────
+
         Write-Host ""
-        Write-Info "Verifying installation..."
-        $phpExe = Join-Path $InstallDir "php.exe"
-        if (Test-Path $phpExe) {
-            & $phpExe -v
-            Write-Host ""
-            Write-Ok "TrueAsync PHP $Version installed successfully!"
-        } else {
-            $found = Get-ChildItem -Path $InstallDir -Recurse -Filter "php.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) {
-                & $found.FullName -v
-                Write-Host ""
-                Write-Ok "TrueAsync PHP $Version installed successfully!"
-                Write-Warn "PHP binary found at: $($found.FullName)"
-            } else {
-                Write-Warn "php.exe not found in $InstallDir - check the archive structure"
-            }
+
+        $phpExe = Join-Path $script:InstallDir "php.exe"
+        if (-not (Test-Path $phpExe)) {
+            $found = Get-ChildItem -Path $script:InstallDir -Recurse -Filter "php.exe" -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+            if ($found) { $phpExe = $found.FullName }
         }
+
+        if (Test-Path $phpExe) {
+            Write-Host (& $phpExe -v | Select-Object -First 1) -ForegroundColor DarkGray
+        }
+
+        # ── Post-install summary ───────────────────────────────────────────────
+
+        $summary = [ordered]@{}
+        $summary["Location"] = $script:InstallDir
+        $summary["Version"]  = $script:Version
+        $summary["PATH"]     = $pathStatus
+        $summary["Run"]      = if ($addToPath) { "php --version" } else { "$($script:InstallDir)\php.exe --version" }
+
+        Write-Summary $summary
+
+        Write-Host "  " -NoNewline
+        Write-Host "✓" -ForegroundColor Green -NoNewline
+        Write-Host "  TrueAsync PHP " -NoNewline
+        Write-Host $script:Version -ForegroundColor White -NoNewline
+        Write-Host " installed successfully!"
+        Write-Host ""
+
     } finally {
         Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
     }
-
-    Write-Host ""
 }
+
+# ── Update ────────────────────────────────────────────────────────────────────
 
 function Do-Update {
     $current = Get-InstalledVersion
 
     if (-not $current) {
-        Write-Info "No existing installation found. Running fresh install..."
+        Write-Info "No existing installation found — running fresh install"
+        Write-Host ""
         Do-Install
         return
     }
 
-    Write-Info "Current version: $current"
-    Write-Info "Checking for updates..."
+    Write-Info "Installed   $current"
+    Write-Host "  · Checking for updates..." -ForegroundColor DarkGray -NoNewline
 
     $latest = Get-LatestVersion
-
-    if (-not $latest) {
-        Write-Err "Could not determine latest version"
-    }
+    if (-not $latest) { Write-Fail "Could not determine latest version" }
 
     if ($current -eq $latest) {
-        Write-Ok "Already up to date ($current)"
+        Write-Host "`r  " -NoNewline
+        Write-Host "✓" -ForegroundColor Green -NoNewline
+        Write-Host "  Already up to date  " -NoNewline
+        Write-Host $current -ForegroundColor White
+        Write-Host "               "  # clear trailing + newline
         return
     }
 
-    Write-Info "New version available: $latest (current: $current)"
+    Write-Host "`r  " -NoNewline
+    Write-Host "↑" -ForegroundColor Cyan -NoNewline
+    Write-Host "  Update available  " -NoNewline
+    Write-Host $current -ForegroundColor DarkGray -NoNewline
+    Write-Host "  →  " -ForegroundColor DarkGray -NoNewline
+    Write-Host $latest -ForegroundColor White
+    Write-Host "               "  # clear trailing + newline
+
     $script:Version = $latest
     Do-Install
 }
+
+# ── Uninstall ─────────────────────────────────────────────────────────────────
 
 function Do-Uninstall {
     if (-not (Test-Path $InstallDir)) {
@@ -271,24 +578,40 @@ function Do-Uninstall {
         return
     }
 
-    Write-Info "Uninstalling TrueAsync PHP from $InstallDir..."
+    $current = Get-InstalledVersion
+    if ($current) { Write-Info "Version   $current" }
+    Write-Info "Location  $InstallDir"
+    Write-Host ""
 
-    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $newPath = ($currentPath -split ';' | Where-Object { $_ -notlike "*php-trueasync*" }) -join ';'
-    [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    Write-Ok "Cleaned PATH"
+    if ($IsInteractive) {
+        $confirm = Read-YesNo "  Remove TrueAsync PHP?" $false
+        if (-not $confirm) {
+            Write-Info "Cancelled"
+            Write-Host ""
+            return
+        }
+        Write-Host ""
+    }
+
+    $curPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $newPath = ($curPath -split ';' | Where-Object { $_ -notlike "*php-trueasync*" }) -join ';'
+    if ($newPath -ne $curPath) {
+        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+        Write-Info "Removed from PATH"
+    }
 
     Remove-Item -Recurse -Force $InstallDir
-    Write-Ok "TrueAsync PHP uninstalled"
+    Write-Host "  " -NoNewline
+    Write-Host "✓" -ForegroundColor Green -NoNewline
+    Write-Host "  TrueAsync PHP uninstalled"
     Write-Warn "Restart your terminal to apply PATH changes"
+    Write-Host ""
 }
 
+# ── Entry point ───────────────────────────────────────────────────────────────
+
 function Main {
-    Write-Host ""
-    Write-Host "=================================" -ForegroundColor Cyan
-    Write-Host "   TrueAsync PHP Installer"       -ForegroundColor Cyan
-    Write-Host "=================================" -ForegroundColor Cyan
-    Write-Host ""
+    Write-Header
 
     switch ($Command) {
         "update"    { Do-Update }
