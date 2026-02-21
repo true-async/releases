@@ -4,27 +4,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  config:
-    runs-on: ubuntu-latest
-    outputs:
-      php_src_repo: ${{ steps.read.outputs.php_src_repo }}
-      php_src_branch: ${{ steps.read.outputs.php_src_branch }}
-      async_repo: ${{ steps.read.outputs.async_repo }}
-      async_branch: ${{ steps.read.outputs.async_branch }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Read build-config.json
-        id: read
-        run: |
-          echo "php_src_repo=$(jq -r '.php_src.repo' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "async_repo=$(jq -r '.extensions.async.repo' build-config.json)" >> "$GITHUB_OUTPUT"
-          echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
-
   build-debug-dump:
-    name: "Windows x64 Debug dump"
-    needs: config
+    name: "Windows x64 Debug (php-src@true-async + php-async@main)"
     runs-on: windows-2022
     timeout-minutes: 60
     env:
