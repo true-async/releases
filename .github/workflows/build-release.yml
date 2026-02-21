@@ -29,6 +29,7 @@ jobs:
       xdebug_repo: ${{ steps.read.outputs.xdebug_repo }}
       xdebug_branch: ${{ steps.read.outputs.xdebug_branch }}
       version: ${{ steps.read.outputs.version }}
+      php_version: ${{ steps.read.outputs.php_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +42,7 @@ jobs:
           echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "xdebug_repo=$(jq -r '.extensions.xdebug.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "xdebug_branch=$(jq -r '.extensions.xdebug.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
             VERSION="dev-$(date +%Y%m%d-%H%M%S)"
@@ -375,9 +377,10 @@ jobs:
       - name: Package
         run: |
           $version = "${{ needs.config.outputs.version }}"
+          $phpVersion = "${{ needs.config.outputs.php_version }}"
           $suffix = "${{ matrix.artifact_suffix }}"
           $installPrefix = "${{ matrix.install_prefix }}"
-          $archive = "php-trueasync-${version}-windows-x64${suffix}.zip"
+          $archive = "php-trueasync-${version}-php${phpVersion}-windows-x64${suffix}.zip"
 
           # Copy libuv DLL to the install directory
           if (Test-Path "$env:DEPS_DIR\bin\uv.dll") {
@@ -426,9 +429,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "TrueAsync PHP ${{ needs.config.outputs.version }}"
+          name: "TrueAsync PHP ${{ needs.config.outputs.version }} (php${{ needs.config.outputs.php_version }})"
           body: |
-            ## TrueAsync PHP ${{ needs.config.outputs.version }}
+            ## TrueAsync PHP ${{ needs.config.outputs.version }} (php${{ needs.config.outputs.php_version }})
 
             PHP with built-in TrueAsync support and Xdebug.
 
