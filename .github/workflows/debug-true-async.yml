@@ -1,0 +1,44 @@
+name: Debug True-Async Build
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  debug-linux:
+    name: Debug build (php-src@true-async + php-async@main)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout php-src (true-async branch)
+        uses: actions/checkout@v4
+        with:
+          repository: true-async/php-src
+          ref: true-async
+          path: php-src
+          fetch-depth: 1
+
+      - name: Checkout php-async ext (main) into php-src/ext/async
+        uses: actions/checkout@v4
+        with:
+          repository: true-async/php-async
+          ref: main
+          path: php-src/ext/async
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake bison re2c pkg-config build-essential git curl wget \
+            libxml2-dev libsqlite3-dev libcurl4-openssl-dev libssl-dev libargon2-dev dos2unix
+
+      - name: Run debug build
+        run: |
+          cd php-src
+          dos2unix ext/async/config.m4 || true
+          ./buildconf --force
+          ./configure --prefix=/usr/local --enable-debug --enable-async --with-openssl --with-curl --with-sqlite3
+          make -j$(nproc)
+        timeout-minutes: 120
