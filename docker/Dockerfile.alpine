@@ -12,6 +12,7 @@ ARG ASYNC_REPO=https://github.com/true-async/php-async.git
 ARG ASYNC_BRANCH=main
 ARG XDEBUG_REPO=https://github.com/true-async/xdebug.git
 ARG XDEBUG_BRANCH=true-async-86
+ARG DEBUG=false
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -49,11 +50,12 @@ RUN dos2unix /usr/src/php-src/ext/async/config.m4
 WORKDIR /usr/src/php-src
 
 RUN ./buildconf --force \
+    && DEBUG_FLAG=$([ "$DEBUG" = "true" ] && echo "--enable-debug" || echo "--disable-debug") \
     && ./configure \
         --prefix=/usr/local \
         --with-config-file-path=/etc \
         --with-config-file-scan-dir=/etc/php.d \
-        --disable-debug --enable-zts \
+        $DEBUG_FLAG --enable-zts \
         --enable-async \
         --enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data \
         --enable-phpdbg \

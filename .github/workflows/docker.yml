@@ -25,7 +25,10 @@ jobs:
       php_src_branch: ${{ steps.read.outputs.php_src_branch }}
       async_branch: ${{ steps.read.outputs.async_branch }}
       xdebug_branch: ${{ steps.read.outputs.xdebug_branch }}
+      php_version: ${{ steps.read.outputs.php_version }}
+      php_is_latest: ${{ steps.read.outputs.php_is_latest }}
       version: ${{ steps.read.outputs.version }}
+      is_release: ${{ steps.read.outputs.is_release }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,17 +38,22 @@ jobs:
           echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "xdebug_branch=$(jq -r '.extensions.xdebug.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "php_is_latest=$(jq -r '.php_is_latest' build-config.json)" >> "$GITHUB_OUTPUT"
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
             VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # Build Docker images (each includes both cli and fpm)
+  # Build Docker images
   # ---------------------------------------------------------------------------
   build-docker:
-    name: "Docker (${{ matrix.tag }})"
+    name: "Docker (${{ matrix.variant }})"
     needs: config
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -53,10 +61,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - tag: "8.6"
+          - variant: debian
             dockerfile: docker/Dockerfile.debian
-          - tag: 8.6-alpine
+            debug: false
+          - variant: alpine
             dockerfile: docker/Dockerfile.alpine
+            debug: false
+          - variant: debian-debug
+            dockerfile: docker/Dockerfile.debian
+            debug: true
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +83,35 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Compute tags
+        id: tags
+        run: |
+          PHP_VER="${{ needs.config.outputs.php_version }}"
+          VERSION="${{ needs.config.outputs.version }}"
+          IS_RELEASE="${{ needs.config.outputs.is_release }}"
+          PHP_IS_LATEST="${{ needs.config.outputs.php_is_latest }}"
+          IMAGE="trueasync/php-true-async"
+
+          {
+            echo "tags<<EOF"
+            if [[ "${{ matrix.debug }}" == "true" ]]; then
+              # Debug: only latest tags, no versioned release tags
+              echo "${IMAGE}:latest-php${PHP_VER}-debug"
+              [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-debug"
+            elif [[ "${{ matrix.variant }}" == "alpine" ]]; then
+              # Alpine
+              [[ "$IS_RELEASE" == "true" ]] && echo "${IMAGE}:${VERSION}-php${PHP_VER}-alpine"
+              echo "${IMAGE}:latest-php${PHP_VER}-alpine"
+              [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-alpine"
+            else
+              # Debian (default)
+              [[ "$IS_RELEASE" == "true" ]] && echo "${IMAGE}:${VERSION}-php${PHP_VER}"
+              echo "${IMAGE}:latest-php${PHP_VER}"
+              [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -79,35 +121,15 @@ jobs:
             PHP_SRC_BRANCH=${{ needs.config.outputs.php_src_branch }}
             ASYNC_BRANCH=${{ needs.config.outputs.async_branch }}
             XDEBUG_BRANCH=${{ needs.config.outputs.xdebug_branch }}
+            DEBUG=${{ matrix.debug }}
           push: ${{ !inputs.test_only }}
           load: true
-          tags: |
-            trueasync/php-true-async:${{ matrix.tag }}
-          cache-from: type=gha,scope=${{ matrix.tag }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.tag }}
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
       - name: Verify image
         run: |
-          docker run --rm trueasync/php-true-async:${{ matrix.tag }} php -v
-          docker run --rm trueasync/php-true-async:${{ matrix.tag }} php -m
-
-  # ---------------------------------------------------------------------------
-  # Tag "latest" after all builds succeed
-  # ---------------------------------------------------------------------------
-  tag-latest:
-    name: "Tag latest"
-    if: ${{ !inputs.test_only }}
-    needs: [config, build-docker]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Pull and tag latest
-        run: |
-          docker pull trueasync/php-true-async:8.6
-          docker tag trueasync/php-true-async:8.6 trueasync/php-true-async:latest
-          docker push trueasync/php-true-async:latest
+          FIRST_TAG=$(echo "${{ steps.tags.outputs.tags }}" | head -1)
+          docker run --rm "${FIRST_TAG}" php -v
+          docker run --rm "${FIRST_TAG}" php -m

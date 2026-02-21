@@ -1,4 +1,6 @@
 {
+  "php_version": "8.6",
+  "php_is_latest": true,
   "php_src": {
     "repo": "true-async/php-src",
     "branch": "true-async-stable"
