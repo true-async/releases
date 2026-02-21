@@ -46,9 +46,9 @@ jobs:
 
       - name: Build libuv from source
         run: |
-          wget https://github.com/libuv/libuv/archive/v1.49.0.tar.gz
-          tar -xzf v1.49.0.tar.gz
-          cd libuv-1.49.0
+          wget https://github.com/libuv/libuv/archive/v1.49.2.tar.gz
+          tar -xzf v1.49.2.tar.gz
+          cd libuv-1.49.2
           mkdir build && cd build
           cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           ninja
