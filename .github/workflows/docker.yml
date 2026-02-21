@@ -29,6 +29,7 @@ jobs:
       php_is_latest: ${{ steps.read.outputs.php_is_latest }}
       version: ${{ steps.read.outputs.version }}
       is_release: ${{ steps.read.outputs.is_release }}
+      is_prerelease: ${{ steps.read.outputs.is_prerelease }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,8 +45,14 @@ jobs:
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
             VERSION="dev-$(date +%Y%m%d-%H%M%S)"
             echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           else
             echo "is_release=true" >> "$GITHUB_OUTPUT"
+            if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc) ]]; then
+              echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -89,25 +96,35 @@ jobs:
           PHP_VER="${{ needs.config.outputs.php_version }}"
           VERSION="${{ needs.config.outputs.version }}"
           IS_RELEASE="${{ needs.config.outputs.is_release }}"
+          IS_PRERELEASE="${{ needs.config.outputs.is_prerelease }}"
           PHP_IS_LATEST="${{ needs.config.outputs.php_is_latest }}"
           IMAGE="trueasync/php-true-async"
 
           {
             echo "tags<<EOF"
             if [[ "${{ matrix.debug }}" == "true" ]]; then
-              # Debug: only latest tags, no versioned release tags
-              echo "${IMAGE}:latest-php${PHP_VER}-debug"
-              [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-debug"
+              if [[ "$IS_PRERELEASE" == "true" ]]; then
+                # Pre-release debug: versioned tag only
+                echo "${IMAGE}:${VERSION}-php${PHP_VER}-debug"
+              else
+                # Stable debug: latest tags only
+                echo "${IMAGE}:latest-php${PHP_VER}-debug"
+                [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-debug"
+              fi
             elif [[ "${{ matrix.variant }}" == "alpine" ]]; then
               # Alpine
               [[ "$IS_RELEASE" == "true" ]] && echo "${IMAGE}:${VERSION}-php${PHP_VER}-alpine"
-              echo "${IMAGE}:latest-php${PHP_VER}-alpine"
-              [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-alpine"
+              if [[ "$IS_PRERELEASE" != "true" ]]; then
+                echo "${IMAGE}:latest-php${PHP_VER}-alpine"
+                [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-alpine"
+              fi
             else
               # Debian (default)
               [[ "$IS_RELEASE" == "true" ]] && echo "${IMAGE}:${VERSION}-php${PHP_VER}"
-              echo "${IMAGE}:latest-php${PHP_VER}"
-              [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest"
+              if [[ "$IS_PRERELEASE" != "true" ]]; then
+                echo "${IMAGE}:latest-php${PHP_VER}"
+                [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest"
+              fi
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"

@@ -30,6 +30,7 @@ jobs:
       xdebug_branch: ${{ steps.read.outputs.xdebug_branch }}
       version: ${{ steps.read.outputs.version }}
       php_version: ${{ steps.read.outputs.php_version }}
+      is_prerelease: ${{ steps.read.outputs.is_prerelease }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,6 +47,13 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
             VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc) ]]; then
+              echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -429,6 +437,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ needs.config.outputs.is_prerelease == 'true' }}
           name: "TrueAsync PHP ${{ needs.config.outputs.version }} (php${{ needs.config.outputs.php_version }})"
           body: |
             ## TrueAsync PHP ${{ needs.config.outputs.version }} (php${{ needs.config.outputs.php_version }})
