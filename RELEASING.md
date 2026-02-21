@@ -42,6 +42,24 @@ Has its own independent version, not tied to the PHP version.
 | Pre-release (RC) | `vX.Y.Z-rc.N` | `v0.6.0-rc.1` |
 | Pre-release (alpha) | `vX.Y.Z-alpha.N` | `v0.6.0-alpha.1` |
 
+### `true-async/xdebug`
+
+A fork of [xdebug/xdebug](https://github.com/xdebug/xdebug) with TrueAsync support. Unlike `php-async`, xdebug is tightly coupled to a specific PHP version — each PHP major/minor version has a dedicated branch.
+
+**Source branch**: `true-async-86` for PHP 8.6, `true-async-87` for PHP 8.7, etc.
+Tags must always be created from the branch matching the PHP version being released.
+
+Follows the same convention as `true-async/php-src` with a `-trueasync` suffix:
+
+| Type | Format | Example |
+|---|---|---|
+| Stable release | `php-X.Y.Z-trueasync` | `php-8.6.0-trueasync` |
+| Pre-release (beta) | `php-X.Y.Z-trueasync-beta.N` | `php-8.6.0-trueasync-beta.1` |
+| Pre-release (RC) | `php-X.Y.Z-trueasync-rc.N` | `php-8.6.0-trueasync-rc.1` |
+| Pre-release (alpha) | `php-X.Y.Z-trueasync-alpha.N` | `php-8.6.0-trueasync-alpha.1` |
+
+Here `X.Y.Z` is the **PHP version**, not the xdebug version. This makes it immediately clear which PHP version the build targets.
+
 ---
 
 ## Tagging order
