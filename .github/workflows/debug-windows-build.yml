@@ -44,15 +44,15 @@ jobs:
       - name: Checkout php-src
         uses: actions/checkout@v4
         with:
-          repository: ${{ needs.config.outputs.php_src_repo }}
-          ref: ${{ needs.config.outputs.php_src_branch }}
+          repository: true-async/php-src
+          ref: true-async
           path: php-src
 
       - name: Checkout ext/async
         uses: actions/checkout@v4
         with:
-          repository: ${{ needs.config.outputs.async_repo }}
-          ref: ${{ needs.config.outputs.async_branch }}
+          repository: true-async/php-async
+          ref: main
           path: async
 
       - name: Copy async extension to ext/async
