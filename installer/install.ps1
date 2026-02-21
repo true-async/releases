@@ -31,11 +31,12 @@ function Write-Ok    { param($msg) Write-Host "[OK] " -ForegroundColor Green -No
 function Write-Warn  { param($msg) Write-Host "[WARN] " -ForegroundColor Yellow -NoNewline; Write-Host $msg }
 function Write-Err   { param($msg) Write-Host "[ERROR] " -ForegroundColor Red -NoNewline; Write-Host $msg; exit 1 }
 
-# --- Get latest version ---
+# --- Get latest version (including pre-releases) ---
 function Get-LatestVersion {
-    $apiUrl = "https://api.github.com/repos/$Repo/releases/latest"
+    $apiUrl = "https://api.github.com/repos/$Repo/releases"
     $response = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "TrueAsync-Installer" }
-    return $response.tag_name
+    if ($response.Count -eq 0) { return $null }
+    return $response[0].tag_name
 }
 
 # --- Get installed version ---

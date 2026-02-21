@@ -76,12 +76,12 @@ download() {
     fi
 }
 
-# --- Get latest version ---
+# --- Get latest version (including pre-releases) ---
 get_latest_version() {
     local downloader
     downloader=$(get_downloader)
 
-    local api_url="https://api.github.com/repos/${REPO}/releases/latest"
+    local api_url="https://api.github.com/repos/${REPO}/releases"
 
     if [[ "$downloader" == "curl" ]]; then
         curl -fsSL "$api_url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"//;s/".*//'
