@@ -2,6 +2,12 @@
 
 ## Tag naming convention
 
+Each repository in the TrueAsync ecosystem uses its own tag format. Tags must be created **in all repositories** before triggering a release in this repo.
+
+### `true-async/releases` (this repo)
+
+Triggers CI/CD. Tags here drive the entire release pipeline.
+
 | Type | Format | Example |
 |---|---|---|
 | Stable release | `vX.Y.Z` | `v1.0.0` |
@@ -11,6 +17,40 @@
 
 The version number (`X.Y.Z`) is the **product version**, independent of the PHP version.
 The PHP version is defined in `build-config.json` and embedded in artifact names automatically.
+
+### `true-async/php-src`
+
+Follows the same convention as the official `php/php-src` repository, with a `-trueasync` suffix to distinguish from upstream tags.
+
+| Type | Format | Example |
+|---|---|---|
+| Stable release | `php-X.Y.Z-trueasync` | `php-8.6.0-trueasync` |
+| Pre-release (beta) | `php-X.Y.Z-trueasync-beta.N` | `php-8.6.0-trueasync-beta.1` |
+| Pre-release (RC) | `php-X.Y.Z-trueasync-rc.N` | `php-8.6.0-trueasync-rc.1` |
+
+Here `X.Y.Z` is the **PHP version** (e.g. `8.6.0`), not the product version.
+This makes it easy to see at a glance which PHP version the tag is based on and clearly distinguishes it from upstream PHP tags.
+
+### `true-async/php-async` and `true-async/xdebug`
+
+Use the same format as `true-async/php-src`:
+
+| Type | Format | Example |
+|---|---|---|
+| Stable release | `php-X.Y.Z-trueasync` | `php-8.6.0-trueasync` |
+| Pre-release | `php-X.Y.Z-trueasync-beta.N` | `php-8.6.0-trueasync-beta.1` |
+
+---
+
+## Tagging order
+
+Always tag source repositories **before** triggering the release in this repo:
+
+1. Tag `true-async/php-src`
+2. Tag `true-async/php-async`
+3. Tag `true-async/xdebug`
+4. Update `build-config.json` branch fields to point to the new tags
+5. Tag `true-async/releases` → CI/CD starts
 
 ---
 
