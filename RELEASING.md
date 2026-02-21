@@ -31,14 +31,16 @@ Follows the same convention as the official `php/php-src` repository, with a `-t
 Here `X.Y.Z` is the **PHP version** (e.g. `8.6.0`), not the product version.
 This makes it easy to see at a glance which PHP version the tag is based on and clearly distinguishes it from upstream PHP tags.
 
-### `true-async/php-async` and `true-async/xdebug`
+### `true-async/php-async`
 
-Use the same format as `true-async/php-src`:
+Has its own independent version, not tied to the PHP version.
 
 | Type | Format | Example |
 |---|---|---|
-| Stable release | `php-X.Y.Z-trueasync` | `php-8.6.0-trueasync` |
-| Pre-release | `php-X.Y.Z-trueasync-beta.N` | `php-8.6.0-trueasync-beta.1` |
+| Stable release | `vX.Y.Z` | `v0.6.0` |
+| Pre-release (beta) | `vX.Y.Z-beta.N` | `v0.6.0-beta.1` |
+| Pre-release (RC) | `vX.Y.Z-rc.N` | `v0.6.0-rc.1` |
+| Pre-release (alpha) | `vX.Y.Z-alpha.N` | `v0.6.0-alpha.1` |
 
 ---
 
