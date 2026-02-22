@@ -305,6 +305,8 @@ jobs:
             "if %errorlevel% neq 0 exit /b 3",
             "nmake /NOLOGO",
             "if %errorlevel% neq 0 exit /b 3",
+            "nmake build-devel",
+            "if %errorlevel% neq 0 exit /b 3",
             "exit /b 0"
           ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_build.bat" -Encoding ASCII
 
@@ -328,37 +330,23 @@ jobs:
           if %errorlevel% neq 0 exit /b %errorlevel%
           echo All ext/async tests passed.
 
-      - name: Create install task script
-        shell: pwsh
-        run: |
-          @(
-            "@echo off",
-            "cd /d $($env:GITHUB_WORKSPACE)\php-src",
-            "if %errorlevel% neq 0 exit /b 3",
-            "nmake install",
-            "if %errorlevel% neq 0 exit /b 3",
-            "exit /b 0"
-          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_install.bat" -Encoding ASCII
-
-      - name: Install PHP
-        shell: cmd
-        run: |
-          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
-          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_install.bat
-          if %errorlevel% neq 0 exit /b %errorlevel%
-
       - name: Create xdebug build task script
         shell: pwsh
         run: |
-          $installPrefix = "${{ matrix.install_prefix }}"
-          # Find phpize.bat
-          $phpize = "$installPrefix\SDK\phpize.bat"
-          if (!(Test-Path $phpize)) { $phpize = "$installPrefix\devel\phpize.bat" }
-          if (!(Test-Path $phpize)) {
-            $found = Get-ChildItem -Path "$installPrefix" -Recurse -Filter "phpize.bat" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) { $phpize = $found.FullName }
-            else { Write-Error "phpize.bat not found"; exit 1 }
+          # Find phpize.bat from the devel directory created by nmake build-devel
+          $objDir = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
+          $develDir = Get-ChildItem -Path $objDir -Directory -Filter "*-devel-*" -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+          if (-not $develDir) {
+            Write-Error "Devel directory not found in $objDir"
+            exit 1
           }
+          $phpize = Join-Path $develDir.FullName "phpize.bat"
+          if (!(Test-Path $phpize)) {
+            Write-Error "phpize.bat not found in $($develDir.FullName)"
+            exit 1
+          }
+          Write-Host "Using phpize: $phpize"
           @(
             "@echo off",
             "cd /d $($env:GITHUB_WORKSPACE)\xdebug",
@@ -368,8 +356,6 @@ jobs:
             "call configure.bat --with-php-build=%DEPS_DIR% --enable-xdebug",
             "if %errorlevel% neq 0 exit /b 3",
             "nmake /NOLOGO",
-            "if %errorlevel% neq 0 exit /b 3",
-            "nmake install",
             "if %errorlevel% neq 0 exit /b 3",
             "exit /b 0"
           ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_xdebug.bat" -Encoding ASCII
@@ -382,21 +368,81 @@ jobs:
           if %errorlevel% neq 0 exit /b %errorlevel%
 
       - name: Package
+        shell: pwsh
         run: |
-          $version = "${{ needs.config.outputs.version }}"
+          $version    = "${{ needs.config.outputs.version }}"
           $phpVersion = "${{ needs.config.outputs.php_version }}"
-          $suffix = "${{ matrix.artifact_suffix }}"
-          $installPrefix = "${{ matrix.install_prefix }}"
-          $archive = "php-trueasync-${version}-php${phpVersion}-windows-x64${suffix}.zip"
+          $suffix     = "${{ matrix.artifact_suffix }}"
+          $buildDir   = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
+          $phpSrc     = "$env:GITHUB_WORKSPACE\php-src"
+          $archive    = "php-trueasync-${version}-php${phpVersion}-windows-x64${suffix}.zip"
 
-          # Copy libuv DLL to the install directory
-          if (Test-Path "$env:DEPS_DIR\bin\uv.dll") {
-            Copy-Item "$env:DEPS_DIR\bin\uv.dll" "${installPrefix}\" -ErrorAction SilentlyContinue
+          # ── Create staging directory ──────────────────────────────────────────
+          $stageDir = "$buildDir\stage"
+          New-Item -ItemType Directory -Force -Path "$stageDir\ext" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$stageDir\dev" | Out-Null
+
+          # ── Executables ───────────────────────────────────────────────────────
+          Get-ChildItem $buildDir -Filter "*.exe" |
+            Copy-Item -Destination $stageDir -Force
+
+          # ── Root DLLs (php8ts.dll + dep DLLs, excluding php_*.dll extensions) ─
+          $extDllNames = (Get-ChildItem $buildDir -Filter "php_*.dll").Name
+          Get-ChildItem $buildDir -Filter "*.dll" |
+            Where-Object { $_.Name -notin $extDllNames } |
+            Copy-Item -Destination $stageDir -Force
+
+          # ── Extension DLLs → ext/ ─────────────────────────────────────────────
+          Get-ChildItem $buildDir -Filter "php_*.dll" |
+            Copy-Item -Destination "$stageDir\ext" -Force
+
+          # ── Import library → dev/ ─────────────────────────────────────────────
+          Get-ChildItem $buildDir -Filter "php*ts.lib" |
+            Copy-Item -Destination "$stageDir\dev" -Force
+
+          # ── php.ini templates from php-src ────────────────────────────────────
+          foreach ($ini in @("php.ini-development", "php.ini-production")) {
+            $src = Join-Path $phpSrc $ini
+            if (Test-Path $src) {
+              Copy-Item $src $stageDir -Force
+              Write-Host "Copied $ini"
+            }
           }
 
-          Compress-Archive -Path "${installPrefix}\*" -DestinationPath "${env:GITHUB_WORKSPACE}\${archive}"
-          echo "ARCHIVE=${archive}" >> $env:GITHUB_ENV
-        shell: pwsh
+          # ── libuv ─────────────────────────────────────────────────────────────
+          if (Test-Path "$env:DEPS_DIR\bin\uv.dll") {
+            Copy-Item "$env:DEPS_DIR\bin\uv.dll" $stageDir -Force
+          }
+
+          # ── Xdebug ────────────────────────────────────────────────────────────
+          $xdebugDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\xdebug" -Recurse `
+                         -Filter "php_xdebug.dll" -ErrorAction SilentlyContinue |
+                       Select-Object -First 1
+          if (-not $xdebugDll) {
+            Write-Error "php_xdebug.dll not found after xdebug build"
+            exit 1
+          }
+          Copy-Item $xdebugDll.FullName -Destination "$stageDir\ext\php_xdebug.dll" -Force
+          Write-Host "Added xdebug: $($xdebugDll.FullName) -> ext\php_xdebug.dll"
+
+          # ── php.ini (from development template + xdebug) ──────────────────────
+          $iniPath = Join-Path $stageDir "php.ini"
+          $devIni  = Join-Path $stageDir "php.ini-development"
+          if (Test-Path $devIni) { Copy-Item $devIni $iniPath -Force }
+          Add-Content -Path $iniPath -Value @"
+
+extension_dir = "ext"
+
+; Xdebug (loaded with mode=off — enable via xdebug.mode=debug etc.)
+zend_extension = php_xdebug.dll
+xdebug.mode = off
+"@
+          Write-Host "Created php.ini"
+
+          # ── Archive ───────────────────────────────────────────────────────────
+          Compress-Archive -Path "$stageDir\*" `
+            -DestinationPath "$env:GITHUB_WORKSPACE\$archive" -Force
+          echo "ARCHIVE=$archive" >> $env:GITHUB_ENV
 
       - name: Upload artifact
         if: ${{ !inputs.test_only }}
