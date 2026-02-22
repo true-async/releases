@@ -367,6 +367,21 @@ jobs:
           cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_xdebug.bat
           if %errorlevel% neq 0 exit /b %errorlevel%
 
+      - name: Verify xdebug build
+        shell: pwsh
+        run: |
+          Write-Host "=== xdebug directory contents ==="
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\xdebug" -Recurse |
+            Select-Object FullName | Format-Table -AutoSize
+          $dll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\xdebug" -Recurse `
+                   -Filter "php_xdebug.dll" -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+          if (-not $dll) {
+            Write-Error "php_xdebug.dll NOT found - xdebug build failed"
+            exit 1
+          }
+          Write-Host "SUCCESS: php_xdebug.dll found at $($dll.FullName)"
+
       - name: Package
         shell: pwsh
         run: |
