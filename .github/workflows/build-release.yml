@@ -429,14 +429,15 @@ jobs:
           $iniPath = Join-Path $stageDir "php.ini"
           $devIni  = Join-Path $stageDir "php.ini-development"
           if (Test-Path $devIni) { Copy-Item $devIni $iniPath -Force }
-          Add-Content -Path $iniPath -Value @"
-
-extension_dir = "ext"
-
-; Xdebug (loaded with mode=off — enable via xdebug.mode=debug etc.)
-zend_extension = php_xdebug.dll
-xdebug.mode = off
-"@
+          $xdebugConfig = @(
+            "",
+            "extension_dir = `"ext`"",
+            "",
+            "; Xdebug (loaded with mode=off - enable via xdebug.mode=debug etc.)",
+            "zend_extension = php_xdebug.dll",
+            "xdebug.mode = off"
+          )
+          Add-Content -Path $iniPath -Value $xdebugConfig
           Write-Host "Created php.ini"
 
           # ── Archive ───────────────────────────────────────────────────────────
