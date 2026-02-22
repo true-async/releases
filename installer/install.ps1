@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     TrueAsync PHP Installer for Windows.
@@ -104,7 +104,7 @@ function Write-Fail {
 
 function Write-Summary {
     param([System.Collections.Specialized.OrderedDictionary]$Items)
-    $maxInner  = 58   # max inner width of the box
+    $maxInner  = 70   # max inner width of the box
     $keyLen    = ($Items.Keys | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
     $maxValLen = $maxInner - $keyLen - 7   # 7 = 2 left pad + 3 separator + 2 right pad
 
@@ -194,61 +194,6 @@ function Get-FormattedSize {
     return "{0:F0} KiB" -f ($bytes / 1KB)
 }
 
-# Download with live progress bar using async WebClient + event subscribers.
-# The -Action script blocks run in separate runspaces; a Synchronized hashtable
-# is used to safely share progress data back to the main thread.
-function Invoke-DownloadWithProgress {
-    param(
-        [string]$Url,
-        [string]$OutFile,
-        [int]$StepNum,
-        [int]$StepTotal
-    )
-
-    $barW  = 24
-    $wc    = New-Object System.Net.WebClient
-    $wc.Headers.Add("User-Agent", "TrueAsync-Installer")
-
-    $state = [hashtable]::Synchronized(@{ Pct = 0; Bytes = 0L; Done = $false; Err = $null })
-    $sid   = "TrueAsync_DL_$(Get-Random)"
-
-    $null = Register-ObjectEvent -InputObject $wc -EventName DownloadProgressChanged `
-        -SourceIdentifier "${sid}_prog" -MessageData $state -Action {
-            $d = $Event.MessageData
-            $d.Pct   = [Math]::Max(0, $EventArgs.ProgressPercentage)
-            $d.Bytes = $EventArgs.BytesReceived
-        }
-    $null = Register-ObjectEvent -InputObject $wc -EventName DownloadFileCompleted `
-        -SourceIdentifier "${sid}_done" -MessageData $state -Action {
-            $d = $Event.MessageData
-            $d.Err  = $EventArgs.Error
-            $d.Done = $true
-        }
-
-    try {
-        $wc.DownloadFileAsync([uri]$Url, $OutFile)
-
-        while (-not $state.Done) {
-            $pct    = $state.Pct
-            $bytes  = $state.Bytes
-            $filled = [Math]::Min($barW, [Math]::Floor($barW * $pct / 100))
-            $bar    = ("=" * $filled).PadRight($barW)
-            $mb     = "{0:F1}" -f ($bytes / 1MB)
-            Write-Host ("`r  · [{0}/{1}]  Downloading  [{2}] {3}  {4} MiB   " -f `
-                $StepNum, $StepTotal, $bar, "$pct%".PadLeft(4), $mb) -ForegroundColor DarkGray -NoNewline
-            Start-Sleep -Milliseconds 100
-        }
-
-        if ($state.Err) { throw $state.Err }
-
-    } finally {
-        Unregister-Event -SourceIdentifier "${sid}_prog" -ErrorAction SilentlyContinue
-        Unregister-Event -SourceIdentifier "${sid}_done" -ErrorAction SilentlyContinue
-        Remove-Job -Name "${sid}_prog" -Force -ErrorAction SilentlyContinue
-        Remove-Job -Name "${sid}_done" -Force -ErrorAction SilentlyContinue
-        $wc.Dispose()
-    }
-}
 
 function Test-Checksum {
     param([string]$File, [string]$Expected)
@@ -367,6 +312,29 @@ function Do-Install {
         $script:InstallDir = $answer
     }
 
+    # ── Check for existing installation ──────────────────────────────────────
+
+    $existingVer = Get-InstalledVersion
+
+    if ($existingVer -eq $script:Version) {
+        Write-Host ""
+        Write-Ok "Already installed  $($script:Version)"
+        Write-Host ""
+        Write-Info "Use 'php-trueasync update' to check for updates"
+        Write-Host ""
+        return
+    }
+
+    if ($existingVer) {
+        if (-not (Read-YesNo "  Found $existingVer — replace with $($script:Version)?" $true)) {
+            Write-Host ""
+            Write-Info "Installation cancelled"
+            Write-Host ""
+            return
+        }
+        Write-Host ""
+    }
+
     $useDebug = $false
     if ($null -ne $DebugBuild -and $DebugBuild -ne "") {
         $useDebug = ($DebugBuild -eq "true")
@@ -436,9 +404,10 @@ function Do-Install {
         $archivePath  = Join-Path $tmpDir $archive
         $checksumPath = Join-Path $tmpDir "sha256sums.txt"
 
-        # Step 1: Download with live progress bar
-        $script:_step++
-        Invoke-DownloadWithProgress -Url $archiveUrl -OutFile $archivePath -StepNum $script:_step -StepTotal $script:_total
+        # Step 1: Download
+        Write-Pending "Downloading"
+        Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath -UseBasicParsing `
+            -Headers @{ "User-Agent" = "TrueAsync-Installer" }
         $size = Get-FormattedSize $archivePath
         Write-Done "Downloaded" $size
 
