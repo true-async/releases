@@ -353,7 +353,7 @@ jobs:
             "if %errorlevel% neq 0 exit /b 3",
             "call `"$phpize`"",
             "if %errorlevel% neq 0 exit /b 3",
-            "call configure.bat --with-php-build=%DEPS_DIR% --enable-xdebug",
+            "call configure.bat --with-php-build=%DEPS_DIR% --with-xdebug",
             "if %errorlevel% neq 0 exit /b 3",
             "nmake /NOLOGO",
             "if %errorlevel% neq 0 exit /b 3",
@@ -370,14 +370,14 @@ jobs:
       - name: Verify xdebug build
         shell: pwsh
         run: |
-          $buildDir = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
-          Write-Host "=== DLLs in buildDir ==="
-          Get-ChildItem -Path $buildDir -Filter "*.dll" -ErrorAction SilentlyContinue |
+          $xdebugDir = "$env:GITHUB_WORKSPACE\xdebug"
+          Write-Host "=== DLLs in xdebug build output ==="
+          Get-ChildItem -Path $xdebugDir -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue |
             Select-Object Name | Sort-Object Name | Format-Table -AutoSize
-          $dll = Get-ChildItem -Path $buildDir -Filter "php_xdebug.dll" -ErrorAction SilentlyContinue |
+          $dll = Get-ChildItem -Path $xdebugDir -Recurse -Filter "php_xdebug.dll" -ErrorAction SilentlyContinue |
                  Select-Object -First 1
           if (-not $dll) {
-            Write-Error "php_xdebug.dll NOT found in $buildDir - xdebug build failed"
+            Write-Error "php_xdebug.dll NOT found under $xdebugDir - xdebug build failed"
             exit 1
           }
           Write-Host "SUCCESS: php_xdebug.dll found at $($dll.FullName)"
@@ -430,13 +430,16 @@ jobs:
           }
 
           # ── Xdebug ────────────────────────────────────────────────────────────
-          # php_xdebug.dll is built into $buildDir (phpize inherits object-out-dir)
-          # and already copied to $stageDir\ext via the generic php_*.dll step above.
-          if (-not (Test-Path "$stageDir\ext\php_xdebug.dll")) {
-            Write-Error "php_xdebug.dll not found in build output"
+          # phpize builds into xdebug\x64\<config>\ (not into $buildDir)
+          $xdebugDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\xdebug" -Recurse `
+                         -Filter "php_xdebug.dll" -ErrorAction SilentlyContinue |
+                       Select-Object -First 1
+          if (-not $xdebugDll) {
+            Write-Error "php_xdebug.dll not found after xdebug build"
             exit 1
           }
-          Write-Host "Xdebug included in package: ext\php_xdebug.dll"
+          Copy-Item $xdebugDll.FullName -Destination "$stageDir\ext\php_xdebug.dll" -Force
+          Write-Host "Added xdebug: $($xdebugDll.FullName) -> ext\php_xdebug.dll"
 
           # ── php.ini (from development template + xdebug) ──────────────────────
           $iniPath = Join-Path $stageDir "php.ini"
