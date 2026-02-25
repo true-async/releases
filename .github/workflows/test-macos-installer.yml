@@ -9,10 +9,12 @@ jobs:
     timeout-minutes: 60
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Run installer script
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-macos.sh | \
-            NO_INTERACTIVE=true bash
+        run: bash installer/build-macos.sh
+        env:
+          NO_INTERACTIVE: "true"
 
       - name: Verify PHP binary
         run: |
