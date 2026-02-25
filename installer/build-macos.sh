@@ -418,7 +418,7 @@ install_dependencies() {
         gmp
         libxslt
         libjpeg-turbo
-        libwebp
+        webp
         freetype
         libpng
         tidy-html5
@@ -535,7 +535,7 @@ configure_php() {
     local jpeg_prefix
     jpeg_prefix="$(brew --prefix libjpeg-turbo)"
     local webp_prefix
-    webp_prefix="$(brew --prefix libwebp)"
+    webp_prefix="$(brew --prefix webp)"
     local freetype_prefix
     freetype_prefix="$(brew --prefix freetype)"
     local tidy_prefix
