@@ -69,10 +69,10 @@ fi
 STEP_CURRENT=0
 STEP_TOTAL=0
 
-info()    { echo -e "  ${CYAN}→${NC} $*"; }
-success() { echo -e "  ${GREEN}✓${NC} $*"; }
-warn()    { echo -e "  ${YELLOW}⚠${NC} $*"; }
-error()   { echo -e "  ${RED}✗${NC} $*" >&2; exit 1; }
+info()    { echo -e "  ${DIM}·${NC}  $*"; }
+success() { echo -e "  ${GREEN}✓${NC}  $*"; }
+warn()    { echo -e "  ${YELLOW}!${NC}  ${YELLOW}$*${NC}"; }
+error()   { echo -e "  ${RED}✗${NC}  ${RED}$*${NC}" >&2; exit 1; }
 dimtext() { echo -e "  ${DIM}$*${NC}"; }
 
 step() {
@@ -115,14 +115,11 @@ run_with_spinner() {
 
 show_banner() {
     echo ""
-    echo -e "${CYAN}${BOLD}"
-    echo "  ╔══════════════════════════════════════════════════════╗"
-    echo "  ║                                                      ║"
-    echo "  ║     ⚡ TrueAsync PHP — Build from Source             ║"
-    echo "  ║        macOS (Homebrew)                               ║"
-    echo "  ║                                                      ║"
-    echo "  ╚══════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
+    echo -e "  ${CYAN}╔══════════════════════════════════════╗${NC}"
+    echo -e "  ${CYAN}║${NC}   ${BOLD}TrueAsync PHP${NC} ${DIM}— Build from Source${NC}  ${CYAN}║${NC}"
+    echo -e "  ${CYAN}║${NC}   ${DIM}macOS (Homebrew)${NC}                   ${CYAN}║${NC}"
+    echo -e "  ${CYAN}╚══════════════════════════════════════╝${NC}"
+    echo ""
 }
 
 show_summary_box() {
