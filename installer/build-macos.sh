@@ -888,10 +888,9 @@ main() {
 
     read_config
 
-    local build_dir
     build_dir=$(mktemp -d)
     local src_dir="${build_dir}/php-src"
-    trap 'rm -rf "$build_dir"' EXIT
+    trap 'rm -rf "${build_dir:-}"' EXIT
 
     install_dependencies
     build_libcurl "$build_dir"
