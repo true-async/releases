@@ -21,7 +21,7 @@ set -euo pipefail
 # Self-relaunch: when piped via curl, save to temp file and re-exec with tty
 # ═══════════════════════════════════════════════════════════════════════════════
 
-if [[ -z "${__TRUEASYNC_RELAUNCHED:-}" ]] && ! [[ -t 0 ]] && [[ -r /dev/tty ]]; then
+if [[ -z "${__TRUEASYNC_RELAUNCHED:-}" ]] && ! [[ -t 0 ]] && [[ "${NO_INTERACTIVE:-${CI:-false}}" != "true" ]]; then
     _tmpscript=$(mktemp)
     cat > "$_tmpscript"
     __TRUEASYNC_RELAUNCHED=1 exec bash "$_tmpscript" "$@" < /dev/tty
