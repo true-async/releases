@@ -431,6 +431,7 @@ install_dependencies() {
         curl
         argon2
         libpq
+        gettext
     )
 
     info "Installing ${#pkgs[@]} Homebrew packages..."
@@ -562,6 +563,8 @@ configure_php() {
     lmdb_prefix="$(brew --prefix lmdb)"
     local snmp_prefix
     snmp_prefix="$(brew --prefix net-snmp)"
+    local gettext_prefix
+    gettext_prefix="$(brew --prefix gettext)"
 
     # Ensure bison from Homebrew is first in PATH (macOS ships an old one)
     export PATH="${bison_prefix}/bin:${PATH}"
@@ -596,7 +599,7 @@ configure_php() {
         "--enable-xmlreader"
         "--with-bz2=${bzip2_prefix}"
         "--with-curl=${curl_prefix}"
-        "--with-gettext"
+        "--with-gettext=${gettext_prefix}"
         "--with-gmp=${gmp_prefix}"
         "--with-mysqli=mysqlnd"
         "--with-openssl=${openssl_prefix}"
@@ -635,8 +638,8 @@ configure_php() {
     export PKG_CONFIG_PATH="${openssl_prefix}/lib/pkgconfig:${icu_prefix}/lib/pkgconfig:${libxml2_prefix}/lib/pkgconfig:${zlib_prefix}/lib/pkgconfig:${oniguruma_prefix}/lib/pkgconfig:${libffi_prefix}/lib/pkgconfig:${xslt_prefix}/lib/pkgconfig:${sqlite_prefix}/lib/pkgconfig:${libuv_prefix}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
     # Export LDFLAGS and CPPFLAGS for libraries that Homebrew keg-only installs
-    export LDFLAGS="-L${openssl_prefix}/lib -L${icu_prefix}/lib -L${zlib_prefix}/lib -L${bzip2_prefix}/lib -L${readline_prefix}/lib -L${libxml2_prefix}/lib -L${sqlite_prefix}/lib -L${libffi_prefix}/lib"
-    export CPPFLAGS="-I${openssl_prefix}/include -I${icu_prefix}/include -I${zlib_prefix}/include -I${bzip2_prefix}/include -I${readline_prefix}/include -I${libxml2_prefix}/include -I${sqlite_prefix}/include -I${libffi_prefix}/include"
+    export LDFLAGS="-L${openssl_prefix}/lib -L${icu_prefix}/lib -L${zlib_prefix}/lib -L${bzip2_prefix}/lib -L${readline_prefix}/lib -L${libxml2_prefix}/lib -L${sqlite_prefix}/lib -L${libffi_prefix}/lib -L${gettext_prefix}/lib"
+    export CPPFLAGS="-I${openssl_prefix}/include -I${icu_prefix}/include -I${zlib_prefix}/include -I${bzip2_prefix}/include -I${readline_prefix}/include -I${libxml2_prefix}/include -I${sqlite_prefix}/include -I${libffi_prefix}/include -I${gettext_prefix}/include"
 
     info "Configure flags: ${#flags[@]} options"
 
