@@ -115,11 +115,14 @@ run_with_spinner() {
 
 show_banner() {
     echo ""
-    echo -e "  ${CYAN}╔══════════════════════════════════════╗${NC}"
-    echo -e "  ${CYAN}║${NC}   ${BOLD}TrueAsync PHP${NC} ${DIM}— Build from Source${NC}  ${CYAN}║${NC}"
-    echo -e "  ${CYAN}║${NC}   ${DIM}macOS (Homebrew)${NC}                   ${CYAN}║${NC}"
-    echo -e "  ${CYAN}╚══════════════════════════════════════╝${NC}"
-    echo ""
+    echo -e "${CYAN}${BOLD}"
+    echo "  ╔══════════════════════════════════════════════════════╗"
+    echo "  ║                                                      ║"
+    echo "  ║     ⚡ TrueAsync PHP — Build from Source             ║"
+    echo "  ║        macOS (Homebrew)                              ║"
+    echo "  ║                                                      ║"
+    echo "  ╚══════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
 }
 
 show_summary_box() {
@@ -356,7 +359,7 @@ read_config() {
         XDEBUG_BRANCH=$(jq -r '.extensions.xdebug.branch' "$CONFIG_FILE")
     fi
 
-    [[ -n "$PHP_BRANCH" ]] && PHP_SRC_BRANCH="$PHP_BRANCH"
+    if [[ -n "$PHP_BRANCH" ]]; then PHP_SRC_BRANCH="$PHP_BRANCH"; fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -878,7 +881,7 @@ main() {
 
     # Determine total steps
     STEP_TOTAL=9
-    [[ "$NO_XDEBUG" != "true" ]] && STEP_TOTAL=10
+    if [[ "$NO_XDEBUG" != "true" ]]; then STEP_TOTAL=10; fi
 
     read_config
 
