@@ -533,3 +533,81 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Update website download page
+  # ---------------------------------------------------------------------------
+  update-website:
+    if: ${{ !inputs.test_only && needs.config.outputs.is_prerelease == 'false' }}
+    needs: [config, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout website repo
+        uses: actions/checkout@v4
+        with:
+          repository: true-async/true-async.github.io
+          token: ${{ secrets.SITE_DEPLOY_TOKEN }}
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Update releases.yml
+        run: |
+          VERSION="${{ needs.config.outputs.version }}"
+          PHP_VERSION="${{ needs.config.outputs.php_version }}"
+          DATE="$(date +%Y-%m-%d)"
+          TAG="v${VERSION}"
+          BASE_URL="https://github.com/true-async/releases/releases"
+
+          # Mark all existing versions as old
+          yq -i '.versions[].old = true' _data/releases.yml
+
+          # Prepend new version entry
+          yq -i '.versions = [{
+            "version": "'"${VERSION}"'",
+            "date": "'"${DATE}"'",
+            "php_requires": "PHP '"${PHP_VERSION}"'-dev (ZTS)",
+            "changelog_url": "'"${BASE_URL}/tag/${TAG}"'",
+            "old": false,
+            "platforms": [{
+              "name": "Windows",
+              "files": [
+                {
+                  "name": "php-trueasync-'"${VERSION}"'-php'"${PHP_VERSION}"'-windows-x64.zip",
+                  "label": "Release",
+                  "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64.zip"'",
+                  "size": "~25 MB",
+                  "sha256": "see sha256sums.txt in release"
+                },
+                {
+                  "name": "php-trueasync-'"${VERSION}"'-php'"${PHP_VERSION}"'-windows-x64-debug.zip",
+                  "label": "Debug",
+                  "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-debug.zip"'",
+                  "size": "~30 MB",
+                  "sha256": "see sha256sums.txt in release"
+                }
+              ]
+            }]
+          }] + .versions' _data/releases.yml
+
+          # Update Docker image tags
+          yq -i '.docker_images = [
+            {"tag": "trueasync/php-true-async:'"${VERSION}-php${PHP_VERSION}"'", "description": "Ubuntu 24.04 — CLI + FPM"},
+            {"tag": "trueasync/php-true-async:'"${VERSION}-php${PHP_VERSION}-alpine"'", "description": "Alpine 3.20 — CLI + FPM (lightweight)"},
+            {"tag": "trueasync/php-true-async:'"${VERSION}-php${PHP_VERSION}-debug"'", "description": "Ubuntu 24.04 — CLI + FPM (debug symbols)"},
+            {"tag": "trueasync/php-true-async:latest", "description": "Ubuntu 24.04 — alias for latest stable"},
+            {"tag": "trueasync/php-true-async:latest-alpine", "description": "Alpine 3.20 — alias for latest stable"}
+          ]' _data/releases.yml
+
+          echo "Updated releases.yml for v${VERSION}"
+          cat _data/releases.yml
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add _data/releases.yml
+          git commit -m "Update download page for v${{ needs.config.outputs.version }}"
+          git push
