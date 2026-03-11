@@ -35,14 +35,11 @@ jobs:
 
       - name: Install build dependencies
         run: |
-
-      - name: Install build dependencies
-        run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             autoconf automake bison re2c pkg-config build-essential git curl wget \
-            libxml2-dev libsqlite3-dev libcurl4-openssl-dev libssl-dev libargon2-dev dos2unix jq \
-            cmake ninja-build
+            libxml2-dev libsqlite3-dev libssl-dev libargon2-dev dos2unix jq \
+            cmake ninja-build libpsl-dev
 
       - name: Build libuv from source
         run: |
@@ -53,6 +50,16 @@ jobs:
           cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           ninja
           sudo ninja install
+          sudo ldconfig
+
+      - name: Build libcurl 8.11.1 from source
+        run: |
+          wget -q https://github.com/curl/curl/releases/download/curl-8_11_1/curl-8.11.1.tar.gz
+          tar -xzf curl-8.11.1.tar.gz
+          cd curl-8.11.1
+          ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static
+          make -j$(nproc)
+          sudo make install
           sudo ldconfig
 
       - name: Run debug build

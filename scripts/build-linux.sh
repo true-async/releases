@@ -55,17 +55,30 @@ echo "=== Installing dependencies ==="
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
     autoconf automake bison re2c pkg-config \
-    gcc g++ make \
-    libxml2-dev libsqlite3-dev libcurl4-openssl-dev \
+    gcc g++ make wget \
+    libxml2-dev libsqlite3-dev \
     libssl-dev libzip-dev zlib1g-dev \
     libpq-dev libonig-dev libsodium-dev \
     libreadline-dev libbz2-dev \
-    libuv1-dev
+    libuv1-dev libpsl-dev
 
 # Verify libuv
 LIBUV_VER=$(pkg-config --modversion libuv 2>/dev/null || echo "unknown")
 MIN_VER=$(jq -r '.requirements.libuv_min_version' "$CONFIG_FILE")
 echo "libuv: $LIBUV_VER (required >= $MIN_VER)"
+
+# Build libcurl 8.11.1 from source (need >= 8.11.1 for fully async file uploads)
+CURL_VERSION="8.11.1"
+echo "=== Building libcurl ${CURL_VERSION} ==="
+CURL_TAG="curl-$(echo "$CURL_VERSION" | tr '.' '_')"
+wget -q "https://github.com/curl/curl/releases/download/${CURL_TAG}/curl-${CURL_VERSION}.tar.gz" -O "/tmp/curl-${CURL_VERSION}.tar.gz"
+tar -xf "/tmp/curl-${CURL_VERSION}.tar.gz" -C /tmp
+cd "/tmp/curl-${CURL_VERSION}"
+./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static
+make -j"$JOBS"
+sudo make install
+sudo ldconfig
+cd "$BUILD_DIR"
 
 echo "=== Building PHP ==="
 cd "$BUILD_DIR"

@@ -44,7 +44,8 @@ PHP_BRANCH="${PHP_BRANCH:-}"
 NO_INTERACTIVE="${NO_INTERACTIVE:-${CI:-false}}"
 
 LIBUV_VERSION="1.49.2"
-CURL_VERSION="8.10.1"
+CURL_VERSION="8.11.1"
+BUILD_LATEST_CURL="${BUILD_LATEST_CURL:-true}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Colors and UI
@@ -126,11 +127,15 @@ show_banner() {
 show_summary_box() {
     local prefix="$1" debug="$2" extensions="$3" xdebug="$4" set_default="$5" jobs="$6"
 
+    local curl_label="${GREEN}Yes (${CURL_VERSION})${NC}"
+    [[ "$BUILD_LATEST_CURL" != "true" ]] && curl_label="${YELLOW}No (system version)${NC}"
+
     echo ""
     echo -e "  ${BOLD}Build Configuration Summary${NC}"
     echo -e "  ─────────────────────────────────────"
     echo -e "  Install prefix:  ${CYAN}${prefix}${NC}"
     echo -e "  Debug build:     ${debug}"
+    echo -e "  Latest libcurl:  ${curl_label}"
     echo -e "  Extensions:      ${extensions}"
     echo -e "  Xdebug:          ${xdebug}"
     echo -e "  Set as default:  ${set_default}"
@@ -155,12 +160,13 @@ show_help() {
     echo "  --no-xdebug          Exclude Xdebug from build"
     echo "  --jobs N             Parallel make jobs (default: $(nproc 2>/dev/null || echo 4))"
     echo "  --branch NAME        Override php-src branch"
+    echo "  --no-latest-curl     Skip building latest libcurl (async uploads will be synchronous)"
     echo "  --no-interactive     Skip interactive wizard"
     echo "  --help               Show this help"
     echo ""
     echo "Environment variables:"
     echo "  INSTALL_DIR, SET_DEFAULT, DEBUG_BUILD, EXTENSIONS,"
-    echo "  NO_XDEBUG, BUILD_JOBS, PHP_BRANCH, NO_INTERACTIVE, CI"
+    echo "  NO_XDEBUG, BUILD_JOBS, BUILD_LATEST_CURL, PHP_BRANCH, NO_INTERACTIVE, CI"
     exit 0
 }
 
@@ -174,6 +180,7 @@ parse_args() {
             --no-xdebug)      NO_XDEBUG="true"; shift ;;
             --jobs)           BUILD_JOBS="$2"; shift 2 ;;
             --branch)         PHP_BRANCH="$2"; shift 2 ;;
+            --no-latest-curl) BUILD_LATEST_CURL="false"; shift ;;
             --no-interactive) NO_INTERACTIVE="true"; shift ;;
             --help|-h)        show_help ;;
             *) error "Unknown option: $1. Use --help for usage." ;;
@@ -280,7 +287,15 @@ run_wizard() {
         DEBUG_BUILD="false"
     fi
 
-    # 3. Install prefix
+    # 3. Build latest libcurl
+    echo ""
+    if ask_yesno "Build latest libcurl ${CURL_VERSION}? (required for fully async file uploads)" "y"; then
+        BUILD_LATEST_CURL="true"
+    else
+        BUILD_LATEST_CURL="false"
+    fi
+
+    # 5. Install prefix
     echo ""
     ask_input "Installation directory" "$INSTALL_DIR" INSTALL_DIR
 
@@ -301,7 +316,7 @@ run_wizard() {
         esac
     fi
 
-    # 4. PATH
+    # 6. PATH
     echo ""
     if ask_yesno "Add to PATH as default php?" "n"; then
         SET_DEFAULT="true"
@@ -474,18 +489,26 @@ build_libcurl() {
 
     local build_dir="$1"
 
-    # Check system curl version
+    if [[ "$BUILD_LATEST_CURL" != "true" ]]; then
+        info "Skipping libcurl build (BUILD_LATEST_CURL=false)"
+        warn "Async file uploads will use synchronous fallback without libcurl >= 8.11.1"
+        return 0
+    fi
+
+    # Check system curl version — need >= 8.11.1 for full async support
     if pkg-config --exists libcurl 2>/dev/null; then
         local sys_ver
         sys_ver=$(pkg-config --modversion libcurl 2>/dev/null)
         local major minor patch
         IFS='.' read -r major minor patch <<< "$sys_ver"
-        # Need >= 7.87.0
-        if (( major > 7 || (major == 7 && minor >= 87) || major >= 8 )); then
-            success "System libcurl ${sys_ver} is sufficient, skipping build"
+        patch="${patch:-0}"
+        # Need >= 8.11.1 for fully async file uploads (curl#15627)
+        if (( major > 8 || (major == 8 && minor > 11) || (major == 8 && minor == 11 && patch >= 1) )); then
+            success "System libcurl ${sys_ver} is sufficient (>= 8.11.1), skipping build"
             return 0
         fi
-        warn "System libcurl ${sys_ver} is too old, building ${CURL_VERSION}"
+        warn "System libcurl ${sys_ver} < 8.11.1 — async file uploads will be synchronous"
+        info "Building libcurl ${CURL_VERSION} for full async support"
     fi
 
     info "Downloading libcurl ${CURL_VERSION}..."
