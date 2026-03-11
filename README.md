@@ -73,18 +73,21 @@ irm https://raw.githubusercontent.com/true-async/releases/master/installer/insta
 
 The build-from-source scripts (`build-linux.sh`, `build-macos.sh`) support these options:
 
-| Option                | Env Variable          | Default                | Description                                   |
-|-----------------------|-----------------------|------------------------|-----------------------------------------------|
-| `--prefix DIR`        | `INSTALL_DIR`         | `$HOME/.php-trueasync` | Installation directory                        |
-| `--set-default`       | `SET_DEFAULT=true`    | `false`                | Add to PATH as default php                    |
-| `--debug`             | `DEBUG_BUILD=true`    | `false`                | Build with debug symbols                      |
-| `--extensions PRESET` | `EXTENSIONS`          | `standard`             | Extension preset: `standard`, `xdebug`, `all` |
-| `--no-xdebug`         | `NO_XDEBUG=true`      | `false`                | Exclude Xdebug from build                     |
-| `--jobs N`            | `BUILD_JOBS`          | auto                   | Parallel make jobs                            |
-| `--branch NAME`       | `PHP_BRANCH`          | from config            | Override php-src branch                       |
-| `--no-interactive`    | `NO_INTERACTIVE=true` | `false`                | Skip interactive wizard                       |
+| Option                | Env Variable             | Default                | Description                                          |
+|-----------------------|--------------------------|------------------------|------------------------------------------------------|
+| `--prefix DIR`        | `INSTALL_DIR`            | `$HOME/.php-trueasync` | Installation directory                               |
+| `--set-default`       | `SET_DEFAULT=true`       | `false`                | Add to PATH as default php                           |
+| `--debug`             | `DEBUG_BUILD=true`       | `false`                | Build with debug symbols                             |
+| `--extensions PRESET` | `EXTENSIONS`             | `standard`             | Extension preset: `standard`, `xdebug`, `all`        |
+| `--no-xdebug`         | `NO_XDEBUG=true`        | `false`                | Exclude Xdebug from build                            |
+| `--no-latest-curl`    | `BUILD_LATEST_CURL=false`| `true`                 | Skip building libcurl 8.12.0 (async uploads fallback)|
+| `--jobs N`            | `BUILD_JOBS`             | auto                   | Parallel make jobs                                   |
+| `--branch NAME`       | `PHP_BRANCH`             | from config            | Override php-src branch                              |
+| `--no-interactive`    | `NO_INTERACTIVE=true`    | `false`                | Skip interactive wizard                              |
 
-By default, TrueAsync PHP is **not** added to PATH to avoid conflicts with your system PHP. Use `--set-default` to make it the default `php`.
+By default, the installer builds **libcurl 8.12.0** from source. This is required for fully async file uploads — libcurl >= 8.11.1 fixes PAUSE/unpause bugs ([curl#15627](https://github.com/curl/curl/pull/15627)) that caused intermittent timeouts. Use `--no-latest-curl` to skip this and use the system libcurl (async uploads will fall back to synchronous reads).
+
+TrueAsync PHP is **not** added to PATH by default to avoid conflicts with your system PHP. Use `--set-default` to make it the default `php`.
 
 ## Management
 
