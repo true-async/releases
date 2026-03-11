@@ -43,7 +43,7 @@ BUILD_JOBS="${BUILD_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 PHP_BRANCH="${PHP_BRANCH:-}"
 NO_INTERACTIVE="${NO_INTERACTIVE:-${CI:-false}}"
 
-CURL_VERSION="8.10.1"
+CURL_VERSION="8.12.0"
 
 # Detect Homebrew prefix (ARM: /opt/homebrew, Intel: /usr/local)
 BREW_PREFIX="${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null || echo "/opt/homebrew")}"
@@ -447,14 +447,15 @@ install_dependencies() {
 build_libcurl() {
     step "Checking libcurl version"
 
-    # Check brew curl version
+    # Check brew curl version — need >= 8.11.1 for full async support
     local brew_curl_ver
     brew_curl_ver=$(brew info --json=v2 curl 2>/dev/null | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"//;s/"//' || echo "0")
 
-    local major
-    major=$(echo "$brew_curl_ver" | cut -d. -f1)
-    if (( major >= 8 )); then
-        success "Homebrew curl ${brew_curl_ver} is sufficient"
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$brew_curl_ver"
+    patch="${patch:-0}"
+    if (( major > 8 || (major == 8 && minor > 11) || (major == 8 && minor == 11 && patch >= 1) )); then
+        success "Homebrew curl ${brew_curl_ver} is sufficient (>= 8.11.1)"
         return 0
     fi
 

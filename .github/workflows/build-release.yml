@@ -114,10 +114,10 @@ jobs:
   #         sudo ldconfig
   #         cd ../..
   #
-  #         # Build libcurl 8.5.0 from source (need >= 7.87.0 for TrueAsync)
-  #         wget https://github.com/curl/curl/releases/download/curl-8_5_0/curl-8.5.0.tar.gz
-  #         tar -xzf curl-8.5.0.tar.gz
-  #         cd curl-8.5.0
+  #         # Build libcurl 8.12.0 from source (need >= 8.11.1 for fully async file uploads)
+  #         wget https://github.com/curl/curl/releases/download/curl-8_12_0/curl-8.12.0.tar.gz
+  #         tar -xzf curl-8.12.0.tar.gz
+  #         cd curl-8.12.0
   #         ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static
   #         make -j$(nproc)
   #         sudo make install

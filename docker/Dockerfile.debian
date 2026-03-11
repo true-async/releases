@@ -38,10 +38,10 @@ RUN wget -q https://github.com/libuv/libuv/archive/v1.49.0.tar.gz \
     && ninja && ninja install && ldconfig \
     && cd / && rm -rf libuv*
 
-# Build libcurl 8.10.1 (need >= 7.87.0 for TrueAsync)
-RUN wget -q https://github.com/curl/curl/releases/download/curl-8_10_1/curl-8.10.1.tar.gz \
-    && tar -xf curl-8.10.1.tar.gz \
-    && cd curl-8.10.1 \
+# Build libcurl 8.12.0 (need >= 8.11.1 for fully async file uploads, see CURL-INTEGRATION.md)
+RUN wget -q https://github.com/curl/curl/releases/download/curl-8_12_0/curl-8.12.0.tar.gz \
+    && tar -xf curl-8.12.0.tar.gz \
+    && cd curl-8.12.0 \
     && ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static \
     && make -j"$(nproc)" && make install && ldconfig \
     && cd / && rm -rf curl*
