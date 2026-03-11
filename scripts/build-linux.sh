@@ -67,8 +67,8 @@ LIBUV_VER=$(pkg-config --modversion libuv 2>/dev/null || echo "unknown")
 MIN_VER=$(jq -r '.requirements.libuv_min_version' "$CONFIG_FILE")
 echo "libuv: $LIBUV_VER (required >= $MIN_VER)"
 
-# Build libcurl 8.11.1 from source (need >= 8.11.1 for fully async file uploads)
-CURL_VERSION="8.11.1"
+# Build libcurl 8.12.0 from source (need >= 8.11.1 for fully async file uploads)
+CURL_VERSION="8.12.0"
 echo "=== Building libcurl ${CURL_VERSION} ==="
 CURL_TAG="curl-$(echo "$CURL_VERSION" | tr '.' '_')"
 wget -q "https://github.com/curl/curl/releases/download/${CURL_TAG}/curl-${CURL_VERSION}.tar.gz" -O "/tmp/curl-${CURL_VERSION}.tar.gz"

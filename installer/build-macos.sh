@@ -43,7 +43,7 @@ BUILD_JOBS="${BUILD_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 PHP_BRANCH="${PHP_BRANCH:-}"
 NO_INTERACTIVE="${NO_INTERACTIVE:-${CI:-false}}"
 
-CURL_VERSION="8.11.1"
+CURL_VERSION="8.12.0"
 
 # Detect Homebrew prefix (ARM: /opt/homebrew, Intel: /usr/local)
 BREW_PREFIX="${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null || echo "/opt/homebrew")}"

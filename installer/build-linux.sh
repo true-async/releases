@@ -44,7 +44,7 @@ PHP_BRANCH="${PHP_BRANCH:-}"
 NO_INTERACTIVE="${NO_INTERACTIVE:-${CI:-false}}"
 
 LIBUV_VERSION="1.49.2"
-CURL_VERSION="8.11.1"
+CURL_VERSION="8.12.0"
 BUILD_LATEST_CURL="${BUILD_LATEST_CURL:-true}"
 
 # ═══════════════════════════════════════════════════════════════════════════════

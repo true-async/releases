@@ -52,11 +52,11 @@ jobs:
           sudo ninja install
           sudo ldconfig
 
-      - name: Build libcurl 8.11.1 from source
+      - name: Build libcurl 8.12.0 from source
         run: |
-          wget -q https://github.com/curl/curl/releases/download/curl-8_11_1/curl-8.11.1.tar.gz
-          tar -xzf curl-8.11.1.tar.gz
-          cd curl-8.11.1
+          wget -q https://github.com/curl/curl/releases/download/curl-8_12_0/curl-8.12.0.tar.gz
+          tar -xzf curl-8.12.0.tar.gz
+          cd curl-8.12.0
           ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static
           make -j$(nproc)
           sudo make install
