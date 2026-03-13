@@ -24,12 +24,12 @@ Follows the same convention as the official `php/php-src` repository, with a `-t
 
 | Type | Format | Example |
 |---|---|---|
-| Stable release | `php-X.Y.Z-trueasync` | `php-8.6.0-trueasync` |
+| Stable release | `php-X.Y.Z-trueasync-A.B.C` | `php-8.6.0-trueasync-0.6.0` |
 | Pre-release (beta) | `php-X.Y.Z-trueasync-beta.N` | `php-8.6.0-trueasync-beta.1` |
 | Pre-release (RC) | `php-X.Y.Z-trueasync-rc.N` | `php-8.6.0-trueasync-rc.1` |
 
-Here `X.Y.Z` is the **PHP version** (e.g. `8.6.0`), not the product version.
-This makes it easy to see at a glance which PHP version the tag is based on and clearly distinguishes it from upstream PHP tags.
+Here `X.Y.Z` is the **PHP version** (e.g. `8.6.0`) and `A.B.C` is the **product version** (e.g. `0.6.0`).
+This makes it easy to see at a glance which PHP version the tag is based on, clearly distinguishes it from upstream PHP tags, and allows multiple product releases per PHP version.
 
 ### `true-async/php-async`
 
@@ -53,12 +53,12 @@ Follows the same convention as `true-async/php-src` with a `-trueasync` suffix:
 
 | Type | Format | Example |
 |---|---|---|
-| Stable release | `php-X.Y.Z-trueasync` | `php-8.6.0-trueasync` |
+| Stable release | `php-X.Y.Z-trueasync-A.B.C` | `php-8.6.0-trueasync-0.6.0` |
 | Pre-release (beta) | `php-X.Y.Z-trueasync-beta.N` | `php-8.6.0-trueasync-beta.1` |
 | Pre-release (RC) | `php-X.Y.Z-trueasync-rc.N` | `php-8.6.0-trueasync-rc.1` |
 | Pre-release (alpha) | `php-X.Y.Z-trueasync-alpha.N` | `php-8.6.0-trueasync-alpha.1` |
 
-Here `X.Y.Z` is the **PHP version**, not the xdebug version. This makes it immediately clear which PHP version the build targets.
+Here `X.Y.Z` is the **PHP version** and `A.B.C` is the **product version**. This makes it immediately clear which PHP version the build targets, and allows multiple product releases per PHP version.
 
 ---
 
