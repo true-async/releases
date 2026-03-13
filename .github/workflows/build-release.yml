@@ -441,19 +441,34 @@ jobs:
           Copy-Item $xdebugDll.FullName -Destination "$stageDir\ext\php_xdebug.dll" -Force
           Write-Host "Added xdebug: $($xdebugDll.FullName) -> ext\php_xdebug.dll"
 
-          # ── php.ini (from development template + xdebug) ──────────────────────
+          # ── php.ini (from development template + extensions + xdebug) ───────────
           $iniPath = Join-Path $stageDir "php.ini"
           $devIni  = Join-Path $stageDir "php.ini-development"
           if (Test-Path $devIni) { Copy-Item $devIni $iniPath -Force }
-          $xdebugConfig = @(
+          $phpConfig = @(
             "",
             "extension_dir = `"ext`"",
+            "",
+            "; Core extensions (required for Symfony and most frameworks)",
+            "extension=curl",
+            "extension=fileinfo",
+            "extension=gd",
+            "extension=intl",
+            "extension=mbstring",
+            "extension=openssl",
+            "extension=sodium",
+            "extension=zip",
+            "",
+            "; Database",
+            "extension=pdo_mysql",
+            "extension=pdo_pgsql",
+            "extension=pdo_sqlite",
             "",
             "; Xdebug (loaded with mode=off - enable via xdebug.mode=debug etc.)",
             "zend_extension = php_xdebug.dll",
             "xdebug.mode = off"
           )
-          Add-Content -Path $iniPath -Value $xdebugConfig
+          Add-Content -Path $iniPath -Value $phpConfig
           Write-Host "Created php.ini"
 
           # ── Archive ───────────────────────────────────────────────────────────
