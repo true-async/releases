@@ -66,9 +66,9 @@ Here `X.Y.Z` is the **PHP version** and `A.B.C` is the **product version**. This
 
 Always tag source repositories **before** triggering the release in this repo:
 
-1. Tag `true-async/php-src`
-2. Tag `true-async/php-async`
-3. Tag `true-async/xdebug`
+1. Tag `true-async/php-src` — tag from branch `true-async-stable`
+2. Tag `true-async/php-async` — tag from branch `main`
+3. Tag `true-async/xdebug` — tag from branch `true-async-86` (or matching PHP version branch)
 4. Update `build-config.json` branch fields to point to the new tags
 5. Tag `true-async/releases` → CI/CD starts
 
