@@ -84,6 +84,7 @@ RUN ./buildconf --force \
         --enable-gd \
         --enable-dba \
         --enable-xmlreader \
+        --enable-embed \
         --with-bz2 \
         --with-curl \
         --with-gettext \

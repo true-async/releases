@@ -598,6 +598,7 @@ configure_php() {
         "--enable-gd"
         "--enable-dba"
         "--enable-xmlreader"
+        "--enable-embed"
         "--with-bz2=${bzip2_prefix}"
         "--with-curl=${curl_prefix}"
         "--with-gettext=${gettext_prefix}"
