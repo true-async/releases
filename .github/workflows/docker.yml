@@ -77,6 +77,9 @@ jobs:
           - variant: debian-debug
             dockerfile: docker/Dockerfile.debian
             debug: true
+          - variant: frankenphp
+            dockerfile: docker/Dockerfile.frankenphp
+            debug: false
     steps:
       - uses: actions/checkout@v4
 
@@ -102,7 +105,13 @@ jobs:
 
           {
             echo "tags<<EOF"
-            if [[ "${{ matrix.debug }}" == "true" ]]; then
+            if [[ "${{ matrix.variant }}" == "frankenphp" ]]; then
+              [[ "$IS_RELEASE" == "true" ]] && echo "${IMAGE}:${VERSION}-php${PHP_VER}-frankenphp"
+              if [[ "$IS_PRERELEASE" != "true" ]]; then
+                echo "${IMAGE}:latest-php${PHP_VER}-frankenphp"
+                [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-frankenphp"
+              fi
+            elif [[ "${{ matrix.debug }}" == "true" ]]; then
               if [[ "$IS_PRERELEASE" == "true" ]]; then
                 # Pre-release debug: versioned tag only
                 echo "${IMAGE}:${VERSION}-php${PHP_VER}-debug"
@@ -148,5 +157,9 @@ jobs:
       - name: Verify image
         run: |
           FIRST_TAG=$(echo "${{ steps.tags.outputs.tags }}" | head -1)
-          docker run --rm "${FIRST_TAG}" php -v
-          docker run --rm "${FIRST_TAG}" php -m
+          if [[ "${{ matrix.variant }}" == "frankenphp" ]]; then
+            docker run --rm "${FIRST_TAG}" frankenphp version
+          else
+            docker run --rm "${FIRST_TAG}" php -v
+            docker run --rm "${FIRST_TAG}" php -m
+          fi

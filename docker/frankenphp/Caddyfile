@@ -1,0 +1,21 @@
+{
+    admin off
+    frankenphp {
+        # Thread pool is sized automatically by FrankenPHP
+    }
+}
+
+:8080 {
+    root * /app
+    php_server {
+        index off
+        file_server off
+        worker {
+            file /app/async_entrypoint.php
+            num 1
+            async
+            buffer_size 20
+            match /*
+        }
+    }
+}
