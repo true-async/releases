@@ -15,11 +15,75 @@ Each image includes both `php` (CLI) and `php-fpm`.
 
 Available tags:
 
-| Tag          | Base         | Description                      |
-|--------------|--------------|----------------------------------|
-| `8.6`        | Ubuntu 24.04 | Full image with cli + fpm        |
-| `8.6-alpine` | Alpine 3.20  | Lightweight image with cli + fpm |
-| `latest`     | Ubuntu 24.04 | Alias for `8.6`                  |
+| Tag                  | Base         | Description                                    |
+|----------------------|--------------|------------------------------------------------|
+| `8.6`                | Ubuntu 24.04 | Full image with cli + fpm                      |
+| `8.6-alpine`         | Alpine 3.20  | Lightweight image with cli + fpm               |
+| `8.6-frankenphp`     | Ubuntu 24.04 | FrankenPHP — Caddy + async PHP worker          |
+| `latest`             | Ubuntu 24.04 | Alias for `8.6`                                |
+| `latest-frankenphp`  | Ubuntu 24.04 | Alias for `8.6-frankenphp`                     |
+
+### FrankenPHP (async worker mode)
+
+[FrankenPHP](https://github.com/true-async/frankenphp) is a Go-based PHP app server built on top of Caddy. The TrueAsync variant runs PHP as a persistent async worker — one PHP script stays loaded and handles requests as coroutines via the TrueAsync event loop.
+
+```bash
+docker pull trueasync/php-true-async:latest-frankenphp
+docker run --rm -p 8080:8080 trueasync/php-true-async:latest-frankenphp
+```
+
+Then open http://localhost:8080 — the bundled demo page shows live runtime stats (PHP version, active coroutines, memory).
+
+To use your own entrypoint:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v ./my-app:/app \
+  -v ./Caddyfile:/etc/caddy/Caddyfile \
+  trueasync/php-true-async:latest-frankenphp
+```
+
+Example Caddyfile with async worker:
+
+```
+{
+    admin off
+    frankenphp {}
+}
+
+:8080 {
+    root * /app
+    php_server {
+        index off
+        file_server off
+        worker {
+            file /app/entrypoint.php
+            num 1
+            async
+            buffer_size 20
+            match /*
+        }
+    }
+}
+```
+
+Example `entrypoint.php`:
+
+```php
+<?php
+use FrankenPHP\HttpServer;
+use FrankenPHP\Request;
+use FrankenPHP\Response;
+
+set_time_limit(0);
+
+HttpServer::onRequest(function (Request $request, Response $response): void {
+    $response->setStatus(200);
+    $response->setHeader('Content-Type', 'text/plain');
+    $response->write('Hello from TrueAsync!');
+    $response->end();
+});
+```
 
 ### Build from Source (Linux)
 
@@ -119,7 +183,7 @@ Standard PHP extensions: curl, mbstring, openssl, pdo, pdo_mysql, pdo_pgsql, pdo
 
 | Platform  | Method             | Variants                  | Status  |
 |-----------|--------------------|---------------------------|---------|
-| Linux     | Docker             | Ubuntu 24.04, Alpine 3.20 | ✅       |
+| Linux     | Docker             | Ubuntu 24.04, Alpine 3.20, FrankenPHP | ✅       |
 | Linux     | Build from source  | Ubuntu/Debian (apt)       | ✅       |
 | macOS     | Build from source  | ARM + Intel (Homebrew)    | ✅       |
 | Windows   | Pre-built binaries | Release, Debug (x64)      | ✅       |
@@ -137,6 +201,7 @@ Build parameters are defined in [`build-config.json`](build-config.json):
 - [TrueAsync PHP Source](https://github.com/true-async/php-src) — PHP fork with async API
 - [TrueAsync Extension](https://github.com/true-async/async) — libuv-based async implementation
 - [TrueAsync Xdebug](https://github.com/true-async/xdebug) — Xdebug with async support
+- [TrueAsync FrankenPHP](https://github.com/true-async/frankenphp) — FrankenPHP fork with async worker support
 
 ## License
 
