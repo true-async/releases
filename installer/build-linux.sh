@@ -763,6 +763,11 @@ build_frankenphp() {
 
     ensure_go "$build_dir"
 
+    local sudo_cmd=""
+    [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
+    run_with_spinner "Installing FrankenPHP build dependencies" \
+        $sudo_cmd apt-get install -y -qq --no-install-recommends libbrotli-dev
+
     info "Cloning FrankenPHP (${FRANKENPHP_BRANCH})..."
     run_with_spinner "Cloning FrankenPHP" \
         git clone --depth=1 --branch "$FRANKENPHP_BRANCH" "https://github.com/${FRANKENPHP_REPO}.git" "$frankenphp_dir"

@@ -758,6 +758,9 @@ build_frankenphp() {
 
     ensure_go
 
+    run_with_spinner "Installing FrankenPHP build dependencies" \
+        brew install --quiet brotli
+
     info "Cloning FrankenPHP (${FRANKENPHP_BRANCH})..."
     run_with_spinner "Cloning FrankenPHP" \
         git clone --depth=1 --branch "$FRANKENPHP_BRANCH" "https://github.com/${FRANKENPHP_REPO}.git" "$frankenphp_dir"
