@@ -259,23 +259,31 @@ run_wizard() {
     echo -e "  ${DIM}Configure your TrueAsync PHP build${NC}"
 
     # 1. Extensions
-    ASK_CHOICE_DEFAULT=2 ask_choice "Which extensions to build?" \
+    ASK_CHOICE_DEFAULT=3 ask_choice "Which extensions to build?" \
         "Standard — async + core extensions" \
         "Standard + Xdebug — adds debugging support" \
-        "All — everything including Xdebug" \
+        "Standard + FrankenPHP — adds Caddy-based async server" \
+        "All — Xdebug + FrankenPHP" \
         "Custom — choose manually"
     local ext_choice=$?
 
     case $ext_choice in
-        0) EXTENSIONS="standard"; NO_XDEBUG="true" ;;
-        1) EXTENSIONS="standard"; NO_XDEBUG="false" ;;
-        2) EXTENSIONS="all"; NO_XDEBUG="false" ;;
-        3) EXTENSIONS="all"
+        0) EXTENSIONS="standard"; NO_XDEBUG="true";  BUILD_FRANKENPHP="false" ;;
+        1) EXTENSIONS="standard"; NO_XDEBUG="false"; BUILD_FRANKENPHP="false" ;;
+        2) EXTENSIONS="standard"; NO_XDEBUG="true";  BUILD_FRANKENPHP="true"  ;;
+        3) EXTENSIONS="all";      NO_XDEBUG="false"; BUILD_FRANKENPHP="true"  ;;
+        4) EXTENSIONS="all"
            echo ""
            if ask_yesno "Include Xdebug?" "y"; then
                NO_XDEBUG="false"
            else
                NO_XDEBUG="true"
+           fi
+           echo ""
+           if ask_yesno "Build FrankenPHP? (Caddy-based async PHP server, requires Go 1.26+)" "n"; then
+               BUILD_FRANKENPHP="true"
+           else
+               BUILD_FRANKENPHP="false"
            fi
            ;;
     esac
@@ -309,15 +317,7 @@ run_wizard() {
         esac
     fi
 
-    # 4. FrankenPHP
-    echo ""
-    if ask_yesno "Build FrankenPHP? (Caddy-based async PHP server, requires Go 1.26+)" "n"; then
-        BUILD_FRANKENPHP="true"
-    else
-        BUILD_FRANKENPHP="false"
-    fi
-
-    # 5. PATH
+    # 4. PATH
     echo ""
     if ask_yesno "Add to PATH as default php?" "n"; then
         SET_DEFAULT="true"
