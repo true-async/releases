@@ -982,7 +982,7 @@ main() {
     local build_dir
     build_dir=$(mktemp -d)
     local src_dir="${build_dir}/php-src"
-    trap 'rm -rf "$build_dir"' EXIT
+    trap 'chmod -R u+w "$build_dir" 2>/dev/null; rm -rf "$build_dir"' EXIT
 
     # Execute build steps
     install_dependencies
