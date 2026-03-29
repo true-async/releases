@@ -264,7 +264,7 @@ run_wizard() {
     echo -e "  ${DIM}Configure your TrueAsync PHP build${NC}"
 
     # 1. Extensions
-    ASK_CHOICE_DEFAULT=3 ask_choice "Which extensions to build?" \
+    ASK_CHOICE_DEFAULT=2 ask_choice "Which extensions to build?" \
         "Standard — async + core extensions" \
         "Standard + Xdebug — adds debugging support" \
         "Standard + FrankenPHP — adds Caddy-based async server" \
