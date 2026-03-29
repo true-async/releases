@@ -780,8 +780,9 @@ build_frankenphp() {
 
     run_with_spinner "Compiling FrankenPHP" \
         bash -c "cd '${frankenphp_dir}/caddy/frankenphp' && \
+            PHP_PREFIX=\"\$('${php_config}' --prefix)\" && \
             CGO_CFLAGS=\"\$('${php_config}' --includes)\" \
-            CGO_LDFLAGS=\"\$('${php_config}' --ldflags) \$('${php_config}' --libs)\" \
+            CGO_LDFLAGS=\"-L\${PHP_PREFIX}/lib -Wl,-rpath,\${PHP_PREFIX}/lib \$('${php_config}' --ldflags) \$('${php_config}' --libs)\" \
             go build -tags 'trueasync,nowatcher' -o '${INSTALL_DIR}/bin/frankenphp' ."
 
     success "FrankenPHP installed to ${INSTALL_DIR}/bin/frankenphp"
