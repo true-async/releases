@@ -17,6 +17,10 @@
       "path": "ext/xdebug"
     }
   },
+  "frankenphp": {
+    "repo": "true-async/frankenphp",
+    "branch": "true-async"
+  },
   "requirements": {
     "libuv": "latest"
   },

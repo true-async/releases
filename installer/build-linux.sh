@@ -43,6 +43,9 @@ BUILD_JOBS="${BUILD_JOBS:-$(nproc 2>/dev/null || echo 4)}"
 PHP_BRANCH="${PHP_BRANCH:-}"
 NO_INTERACTIVE="${NO_INTERACTIVE:-${CI:-false}}"
 
+BUILD_FRANKENPHP="${BUILD_FRANKENPHP:-false}"
+GO_VERSION="1.26.0"
+
 LIBUV_VERSION="1.49.2"
 CURL_VERSION="8.12.0"
 BUILD_LATEST_CURL="${BUILD_LATEST_CURL:-true}"
@@ -125,7 +128,7 @@ show_banner() {
 }
 
 show_summary_box() {
-    local prefix="$1" debug="$2" extensions="$3" xdebug="$4" set_default="$5" jobs="$6"
+    local prefix="$1" debug="$2" extensions="$3" xdebug="$4" set_default="$5" jobs="$6" frankenphp="${7:-${DIM}No${NC}}"
 
     local curl_label="${GREEN}Yes (${CURL_VERSION})${NC}"
     [[ "$BUILD_LATEST_CURL" != "true" ]] && curl_label="${YELLOW}No (system version)${NC}"
@@ -138,6 +141,7 @@ show_summary_box() {
     echo -e "  Latest libcurl:  ${curl_label}"
     echo -e "  Extensions:      ${extensions}"
     echo -e "  Xdebug:          ${xdebug}"
+    echo -e "  FrankenPHP:      ${frankenphp}"
     echo -e "  Set as default:  ${set_default}"
     echo -e "  Parallel jobs:   ${jobs}"
     echo ""
@@ -160,13 +164,14 @@ show_help() {
     echo "  --no-xdebug          Exclude Xdebug from build"
     echo "  --jobs N             Parallel make jobs (default: $(nproc 2>/dev/null || echo 4))"
     echo "  --branch NAME        Override php-src branch"
+    echo "  --frankenphp         Build FrankenPHP binary (Caddy-based async PHP server, requires Go 1.26+)"
     echo "  --no-latest-curl     Skip building latest libcurl (async uploads will be synchronous)"
     echo "  --no-interactive     Skip interactive wizard"
     echo "  --help               Show this help"
     echo ""
     echo "Environment variables:"
     echo "  INSTALL_DIR, SET_DEFAULT, DEBUG_BUILD, EXTENSIONS,"
-    echo "  NO_XDEBUG, BUILD_JOBS, BUILD_LATEST_CURL, PHP_BRANCH, NO_INTERACTIVE, CI"
+    echo "  NO_XDEBUG, BUILD_FRANKENPHP, BUILD_JOBS, BUILD_LATEST_CURL, PHP_BRANCH, NO_INTERACTIVE, CI"
     exit 0
 }
 
@@ -180,6 +185,7 @@ parse_args() {
             --no-xdebug)      NO_XDEBUG="true"; shift ;;
             --jobs)           BUILD_JOBS="$2"; shift 2 ;;
             --branch)         PHP_BRANCH="$2"; shift 2 ;;
+            --frankenphp)     BUILD_FRANKENPHP="true"; shift ;;
             --no-latest-curl) BUILD_LATEST_CURL="false"; shift ;;
             --no-interactive) NO_INTERACTIVE="true"; shift ;;
             --help|-h)        show_help ;;
@@ -295,6 +301,14 @@ run_wizard() {
         BUILD_LATEST_CURL="false"
     fi
 
+    # 4. FrankenPHP
+    echo ""
+    if ask_yesno "Build FrankenPHP? (Caddy-based async PHP server, requires Go 1.26+)" "n"; then
+        BUILD_FRANKENPHP="true"
+    else
+        BUILD_FRANKENPHP="false"
+    fi
+
     # 5. Install prefix
     echo ""
     ask_input "Installation directory" "$INSTALL_DIR" INSTALL_DIR
@@ -334,7 +348,10 @@ run_wizard() {
     local default_label="${DIM}No${NC}"
     [[ "$SET_DEFAULT" == "true" ]] && default_label="${GREEN}Yes${NC}"
 
-    show_summary_box "$INSTALL_DIR" "$debug_label" "$EXTENSIONS" "$xdebug_label" "$default_label" "$BUILD_JOBS"
+    local frankenphp_label="${DIM}No${NC}"
+    [[ "$BUILD_FRANKENPHP" == "true" ]] && frankenphp_label="${GREEN}Yes${NC}"
+
+    show_summary_box "$INSTALL_DIR" "$debug_label" "$EXTENSIONS" "$xdebug_label" "$default_label" "$BUILD_JOBS" "$frankenphp_label"
 
     if ! ask_yesno "Proceed with build?" "y"; then
         echo ""
@@ -369,6 +386,8 @@ read_config() {
         ASYNC_BRANCH=$(sed -n '/"async"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
         XDEBUG_REPO=$(sed -n '/"xdebug"/,/}/p' "$CONFIG_FILE" | grep '"repo"' | sed 's/.*"repo"[[:space:]]*:[[:space:]]*"//;s/".*//')
         XDEBUG_BRANCH=$(sed -n '/"xdebug"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
+        FRANKENPHP_REPO=$(sed -n '/"frankenphp"/,/}/p' "$CONFIG_FILE" | grep '"repo"' | head -1 | sed 's/.*"repo"[[:space:]]*:[[:space:]]*"//;s/".*//')
+        FRANKENPHP_BRANCH=$(sed -n '/"frankenphp"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | head -1 | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
     else
         PHP_SRC_REPO=$(jq -r '.php_src.repo' "$CONFIG_FILE")
         PHP_SRC_BRANCH=$(jq -r '.php_src.branch' "$CONFIG_FILE")
@@ -376,6 +395,8 @@ read_config() {
         ASYNC_BRANCH=$(jq -r '.extensions.async.branch' "$CONFIG_FILE")
         XDEBUG_REPO=$(jq -r '.extensions.xdebug.repo' "$CONFIG_FILE")
         XDEBUG_BRANCH=$(jq -r '.extensions.xdebug.branch' "$CONFIG_FILE")
+        FRANKENPHP_REPO=$(jq -r '.frankenphp.repo' "$CONFIG_FILE")
+        FRANKENPHP_BRANCH=$(jq -r '.frankenphp.branch' "$CONFIG_FILE")
     fi
 
     # Override branch if specified
@@ -694,6 +715,73 @@ build_xdebug() {
     success "Xdebug installed"
 }
 
+ensure_go() {
+    local build_dir="$1"
+
+    if command -v go &>/dev/null; then
+        local go_ver
+        go_ver=$(go version | sed 's/.*go\([0-9]*\.[0-9]*\).*/\1/')
+        local major minor
+        IFS='.' read -r major minor <<< "$go_ver"
+        if (( major >= 1 && minor >= 26 )); then
+            success "Go ${go_ver} is sufficient"
+            return 0
+        fi
+        warn "Go ${go_ver} is too old (need >= 1.26), installing Go ${GO_VERSION}"
+    else
+        info "Go not found, installing Go ${GO_VERSION}"
+    fi
+
+    local go_arch
+    case "$(uname -m)" in
+        x86_64)  go_arch="amd64" ;;
+        aarch64) go_arch="arm64" ;;
+        *) error "Unsupported architecture for Go: $(uname -m)" ;;
+    esac
+
+    info "Downloading Go ${GO_VERSION} (${go_arch})..."
+    wget -q "https://go.dev/dl/go${GO_VERSION}.linux-${go_arch}.tar.gz" -O "${build_dir}/go.tar.gz"
+    tar -xf "${build_dir}/go.tar.gz" -C "$build_dir"
+
+    export PATH="${build_dir}/go/bin:${PATH}"
+    export GOPATH="${build_dir}/gopath"
+    mkdir -p "$GOPATH"
+
+    success "Go ${GO_VERSION} ready"
+}
+
+build_frankenphp() {
+    step "Building FrankenPHP"
+
+    if [[ "$BUILD_FRANKENPHP" != "true" ]]; then
+        return 0
+    fi
+
+    local build_dir="$1"
+    local frankenphp_dir="${build_dir}/frankenphp"
+    local php_config="${INSTALL_DIR}/bin/php-config"
+
+    ensure_go "$build_dir"
+
+    info "Cloning FrankenPHP (${FRANKENPHP_BRANCH})..."
+    run_with_spinner "Cloning FrankenPHP" \
+        git clone --depth=1 --branch "$FRANKENPHP_BRANCH" "https://github.com/${FRANKENPHP_REPO}.git" "$frankenphp_dir"
+
+    run_with_spinner "go mod download (root)" \
+        bash -c "cd '${frankenphp_dir}' && go mod download"
+
+    run_with_spinner "go mod download (caddy)" \
+        bash -c "cd '${frankenphp_dir}/caddy' && go mod download"
+
+    run_with_spinner "Compiling FrankenPHP" \
+        bash -c "cd '${frankenphp_dir}/caddy/frankenphp' && \
+            CGO_CFLAGS=\"\$('${php_config}' --includes)\" \
+            CGO_LDFLAGS=\"\$('${php_config}' --ldflags) \$('${php_config}' --libs)\" \
+            go build -tags 'trueasync,nowatcher' -o '${INSTALL_DIR}/bin/frankenphp' ."
+
+    success "FrankenPHP installed to ${INSTALL_DIR}/bin/frankenphp"
+}
+
 setup_config() {
     step "Setting up PHP configuration"
 
@@ -846,6 +934,9 @@ show_final_message() {
     echo -e "  ─────────────────────────────────────"
     echo -e "  PHP binary: ${CYAN}${bin_dir}/php${NC}"
     echo -e "  Manager:    ${CYAN}${bin_dir}/php-trueasync${NC}"
+    if [[ "$BUILD_FRANKENPHP" == "true" ]]; then
+        echo -e "  FrankenPHP: ${CYAN}${bin_dir}/frankenphp${NC}"
+    fi
 
     if [[ "$SET_DEFAULT" != "true" ]]; then
         echo ""
@@ -881,7 +972,8 @@ main() {
 
     # Determine total steps
     STEP_TOTAL=10
-    [[ "$NO_XDEBUG" != "true" ]] && STEP_TOTAL=11
+    [[ "$NO_XDEBUG" != "true" ]] && STEP_TOTAL=$((STEP_TOTAL + 1))
+    [[ "$BUILD_FRANKENPHP" == "true" ]] && STEP_TOTAL=$((STEP_TOTAL + 1))
 
     # Read config
     read_config
@@ -904,6 +996,8 @@ main() {
     if [[ "$NO_XDEBUG" != "true" ]]; then
         build_xdebug "${build_dir}/xdebug"
     fi
+
+    build_frankenphp "$build_dir"
 
     setup_config
     setup_path

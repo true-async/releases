@@ -25,6 +25,7 @@ jobs:
       php_src_branch: ${{ steps.read.outputs.php_src_branch }}
       async_branch: ${{ steps.read.outputs.async_branch }}
       xdebug_branch: ${{ steps.read.outputs.xdebug_branch }}
+      frankenphp_branch: ${{ steps.read.outputs.frankenphp_branch }}
       php_version: ${{ steps.read.outputs.php_version }}
       php_is_latest: ${{ steps.read.outputs.php_is_latest }}
       version: ${{ steps.read.outputs.version }}
@@ -39,6 +40,7 @@ jobs:
           echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "xdebug_branch=$(jq -r '.extensions.xdebug.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "frankenphp_branch=$(jq -r '.frankenphp.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "php_is_latest=$(jq -r '.php_is_latest' build-config.json)" >> "$GITHUB_OUTPUT"
           VERSION="${GITHUB_REF_NAME#v}"
@@ -147,6 +149,7 @@ jobs:
             PHP_SRC_BRANCH=${{ needs.config.outputs.php_src_branch }}
             ASYNC_BRANCH=${{ needs.config.outputs.async_branch }}
             XDEBUG_BRANCH=${{ needs.config.outputs.xdebug_branch }}
+            FRANKENPHP_BRANCH=${{ needs.config.outputs.frankenphp_branch }}
             DEBUG=${{ matrix.debug }}
           push: ${{ !inputs.test_only }}
           load: true
