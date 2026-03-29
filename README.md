@@ -91,13 +91,18 @@ HttpServer::onRequest(function (Request $request, Response $response): void {
 curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-linux.sh | bash
 ```
 
-An interactive wizard will guide you through the build configuration: extensions, debug mode, install path, and PATH setup.
+An interactive wizard will guide you through the build configuration: extensions, FrankenPHP, debug mode, install path, and PATH setup.
 
 For non-interactive use (CI/scripts):
 
 ```bash
+# Standard build
 curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-linux.sh | \
   NO_INTERACTIVE=true EXTENSIONS=all SET_DEFAULT=true bash
+
+# With FrankenPHP
+curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-linux.sh | \
+  NO_INTERACTIVE=true EXTENSIONS=all BUILD_FRANKENPHP=true SET_DEFAULT=true bash
 ```
 
 Supported distros: Ubuntu, Debian (apt-based).
@@ -113,8 +118,13 @@ Requires [Homebrew](https://brew.sh). Supports both Apple Silicon (ARM) and Inte
 For non-interactive use:
 
 ```bash
+# Standard build
 curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-macos.sh | \
   NO_INTERACTIVE=true EXTENSIONS=all SET_DEFAULT=true bash
+
+# With FrankenPHP
+curl -fsSL https://raw.githubusercontent.com/true-async/releases/master/installer/build-macos.sh | \
+  NO_INTERACTIVE=true EXTENSIONS=all BUILD_FRANKENPHP=true SET_DEFAULT=true bash
 ```
 
 ### Windows
@@ -142,12 +152,23 @@ The build-from-source scripts (`build-linux.sh`, `build-macos.sh`) support these
 | `--prefix DIR`        | `INSTALL_DIR`            | `$HOME/.php-trueasync` | Installation directory                               |
 | `--set-default`       | `SET_DEFAULT=true`       | `false`                | Add to PATH as default php                           |
 | `--debug`             | `DEBUG_BUILD=true`       | `false`                | Build with debug symbols                             |
-| `--extensions PRESET` | `EXTENSIONS`             | `standard`             | Extension preset: `standard`, `xdebug`, `all`        |
-| `--no-xdebug`         | `NO_XDEBUG=true`        | `false`                | Exclude Xdebug from build                            |
+| `--extensions PRESET` | `EXTENSIONS`             | `standard`             | Extension preset: `standard`, `xdebug`, `all` (see below) |
+| `--no-xdebug`         | `NO_XDEBUG=true`         | `false`                | Exclude Xdebug from build                            |
+| `--frankenphp`        | `BUILD_FRANKENPHP=true`  | `false`                | Build FrankenPHP binary (Caddy-based async server)   |
 | `--no-latest-curl`    | `BUILD_LATEST_CURL=false`| `true`                 | Skip building libcurl 8.12.0 (async uploads fallback)|
 | `--jobs N`            | `BUILD_JOBS`             | auto                   | Parallel make jobs                                   |
 | `--branch NAME`       | `PHP_BRANCH`             | from config            | Override php-src branch                              |
 | `--no-interactive`    | `NO_INTERACTIVE=true`    | `false`                | Skip interactive wizard                              |
+
+**Extension presets** (`--extensions`):
+
+| Preset     | Xdebug | Description                        |
+|------------|--------|------------------------------------|
+| `standard` | No     | async + core PHP extensions        |
+| `xdebug`   | Yes    | standard + Xdebug debugger         |
+| `all`       | Yes    | everything (same as `xdebug`)      |
+
+FrankenPHP is opt-in via `--frankenphp` / `BUILD_FRANKENPHP=true` regardless of the preset. Requires Go 1.26+ (installed automatically if not found).
 
 By default, the installer builds **libcurl 8.12.0** from source. This is required for fully async file uploads — libcurl >= 8.11.1 fixes PAUSE/unpause bugs ([curl#15627](https://github.com/curl/curl/pull/15627)) that caused intermittent timeouts. Use `--no-latest-curl` to skip this and use the system libcurl (async uploads will fall back to synchronous reads).
 
