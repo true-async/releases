@@ -3,12 +3,12 @@
   "php_is_latest": true,
   "php_src": {
     "repo": "true-async/php-src",
-    "branch": "php-8.6.0-trueasync-0.6.4"
+    "branch": "php-8.6.0-trueasync-0.6.5"
   },
   "extensions": {
     "async": {
       "repo": "true-async/php-async",
-      "branch": "v0.6.4",
+      "branch": "v0.6.5",
       "path": "ext/async"
     },
     "xdebug": {
@@ -19,7 +19,7 @@
   },
   "frankenphp": {
     "repo": "true-async/frankenphp",
-    "branch": "true-async"
+    "branch": "trueasync-0.6.5"
   },
   "requirements": {
     "libuv": "latest"

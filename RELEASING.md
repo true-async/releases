@@ -42,6 +42,18 @@ Has its own independent version, not tied to the PHP version.
 | Pre-release (RC) | `vX.Y.Z-rc.N` | `v0.6.0-rc.1` |
 | Pre-release (alpha) | `vX.Y.Z-alpha.N` | `v0.6.0-alpha.1` |
 
+### `true-async/frankenphp`
+
+A fork of [dunglas/frankenphp](https://github.com/dunglas/frankenphp) with TrueAsync async worker support. The working branch is `true-async` — all TrueAsync-specific changes live there.
+
+| Type | Format | Example |
+|---|---|---|
+| Stable release | `trueasync-A.B.C` | `trueasync-0.6.0` |
+| Pre-release (beta) | `trueasync-A.B.C-beta.N` | `trueasync-0.6.0-beta.1` |
+| Pre-release (RC) | `trueasync-A.B.C-rc.N` | `trueasync-0.6.0-rc.1` |
+
+Here `A.B.C` is the **product version** (e.g. `0.6.5`). Tags are always created from the `true-async` branch.
+
 ### `true-async/xdebug`
 
 A fork of [xdebug/xdebug](https://github.com/xdebug/xdebug) with TrueAsync support. Unlike `php-async`, xdebug is tightly coupled to a specific PHP version — each PHP major/minor version has a dedicated branch.
@@ -69,8 +81,9 @@ Always tag source repositories **before** triggering the release in this repo:
 1. Tag `true-async/php-src` — tag from branch `true-async-stable`
 2. Tag `true-async/php-async` — tag from branch `main`
 3. Tag `true-async/xdebug` — tag from branch `true-async-86` (or matching PHP version branch)
-4. Update `build-config.json` branch fields to point to the new tags
-5. Tag `true-async/releases` → CI/CD starts
+4. Tag `true-async/frankenphp` — tag from branch `true-async`
+5. Update `build-config.json` branch fields to point to the new tags
+6. Tag `true-async/releases` → CI/CD starts
 
 ---
 
