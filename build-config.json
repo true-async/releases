@@ -19,7 +19,7 @@
   },
   "frankenphp": {
     "repo": "true-async/frankenphp",
-    "branch": "trueasync-0.6.5"
+    "branch": "trueasync-0.6.5FIX"
   },
   "requirements": {
     "libuv": "latest"
