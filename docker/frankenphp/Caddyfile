@@ -12,7 +12,7 @@
         file_server off
         worker {
             file /app/async_entrypoint.php
-            num 1
+            num 4
             async
             match /*
         }
