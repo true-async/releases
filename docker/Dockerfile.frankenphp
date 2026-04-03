@@ -177,7 +177,20 @@ RUN ldconfig
 
 ENV PATH="/usr/local/bin:/usr/local/sbin:${PATH}"
 
-RUN mkdir -p /etc/php.d /etc/caddy /config/caddy /data/caddy /app
+RUN mkdir -p /etc/php.d /etc/caddy /config/caddy /data/caddy /app \
+    && printf '[opcache]\n\
+opcache.enable=1\n\
+opcache.enable_cli=1\n\
+opcache.memory_consumption=256\n\
+opcache.interned_strings_buffer=16\n\
+opcache.max_accelerated_files=32531\n\
+opcache.max_wasted_percentage=5\n\
+opcache.validate_timestamps=0\n\
+opcache.revalidate_freq=0\n\
+opcache.save_comments=1\n\
+opcache.enable_file_override=1\n\
+opcache.jit=tracing\n\
+opcache.jit_buffer_size=128M\n' > /etc/php.d/opcache.ini
 
 COPY docker/frankenphp/Caddyfile /etc/caddy/Caddyfile
 COPY docker/frankenphp/async_entrypoint.php /app/async_entrypoint.php

@@ -124,9 +124,21 @@ RUN /usr/local/bin/phpize \
     && make -j"$(nproc)" \
     && make install
 
-# Minimal PHP config
+# PHP config
 RUN mkdir -p /etc/php.d \
-    && echo "opcache.enable_cli=1" > /etc/php.d/opcache.ini \
+    && printf '[opcache]\n\
+opcache.enable=1\n\
+opcache.enable_cli=1\n\
+opcache.memory_consumption=256\n\
+opcache.interned_strings_buffer=16\n\
+opcache.max_accelerated_files=32531\n\
+opcache.max_wasted_percentage=5\n\
+opcache.validate_timestamps=0\n\
+opcache.revalidate_freq=0\n\
+opcache.save_comments=1\n\
+opcache.enable_file_override=1\n\
+opcache.jit=tracing\n\
+opcache.jit_buffer_size=128M\n' > /etc/php.d/opcache.ini \
     && echo "zend_extension=xdebug.so" > /etc/php.d/xdebug.ini \
     && echo "xdebug.mode=off" >> /etc/php.d/xdebug.ini
 
