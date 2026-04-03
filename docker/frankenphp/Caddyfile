@@ -14,7 +14,6 @@
             file /app/async_entrypoint.php
             num 1
             async
-            buffer_size 20
             match /*
         }
     }
