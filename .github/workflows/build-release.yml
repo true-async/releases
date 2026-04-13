@@ -28,6 +28,8 @@ jobs:
       async_branch: ${{ steps.read.outputs.async_branch }}
       xdebug_repo: ${{ steps.read.outputs.xdebug_repo }}
       xdebug_branch: ${{ steps.read.outputs.xdebug_branch }}
+      frankenphp_repo: ${{ steps.read.outputs.frankenphp_repo }}
+      frankenphp_branch: ${{ steps.read.outputs.frankenphp_branch }}
       version: ${{ steps.read.outputs.version }}
       php_version: ${{ steps.read.outputs.php_version }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
@@ -43,6 +45,8 @@ jobs:
           echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "xdebug_repo=$(jq -r '.extensions.xdebug.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "xdebug_branch=$(jq -r '.extensions.xdebug.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "frankenphp_repo=$(jq -r '.frankenphp.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "frankenphp_branch=$(jq -r '.frankenphp.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
@@ -194,7 +198,7 @@ jobs:
         include:
           - build_type: Release
             output_dir: Release_TS
-            configure_flags: "--enable-snapshot-build --disable-debug-pack"
+            configure_flags: "--enable-snapshot-build --disable-debug-pack --enable-embed"
             install_prefix: "C:\\php-trueasync"
             artifact_suffix: ""
           - build_type: Debug
@@ -382,6 +386,129 @@ jobs:
           }
           Write-Host "SUCCESS: php_xdebug.dll found at $($dll.FullName)"
 
+      # ── FrankenPHP (Release only) ──────────────────────────────────────────
+      - name: Checkout frankenphp
+        if: matrix.build_type == 'Release'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.frankenphp_repo }}
+          ref: ${{ needs.config.outputs.frankenphp_branch }}
+          path: frankenphp
+
+      - name: Install vcpkg brotli and pthreads (FrankenPHP)
+        if: matrix.build_type == 'Release'
+        shell: powershell
+        run: |
+          C:\vcpkg\vcpkg.exe install brotli:x64-windows pthreads:x64-windows
+
+      - name: Download watcher (FrankenPHP)
+        if: matrix.build_type == 'Release'
+        shell: powershell
+        run: |
+          $latestTag = gh release list --repo e-dant/watcher --limit 1 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[0].tagName'
+          Write-Host "Latest Watcher version: $latestTag"
+          gh release download $latestTag --repo e-dant/watcher --pattern "*x86_64-pc-windows-msvc.tar" -O watcher.tar
+          tar -xf "watcher.tar" -C "$env:GITHUB_WORKSPACE"
+          Rename-Item -Path "$env:GITHUB_WORKSPACE\x86_64-pc-windows-msvc" -NewName "watcher"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go (FrankenPHP)
+        if: matrix.build_type == 'Release'
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: |
+            frankenphp/go.sum
+            frankenphp/caddy/go.sum
+          check-latest: true
+
+      - name: Build FrankenPHP
+        if: matrix.build_type == 'Release'
+        shell: powershell
+        run: |
+          $version    = "${{ needs.config.outputs.version }}"
+          $phpVersion = "${{ needs.config.outputs.php_version }}"
+          $vcpkgRoot  = "C:\vcpkg\installed\x64-windows"
+          $watcherRoot = "$env:GITHUB_WORKSPACE\watcher"
+          $phpBinDir  = "$env:PHP_BUILD_OBJ_DIR\Release_TS"
+
+          $develDir = Get-ChildItem -Path $phpBinDir -Directory -Filter "*-devel-*" -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+          if (-not $develDir) { Write-Error "PHP devel dir not found in $phpBinDir"; exit 1 }
+          Write-Host "PHP devel dir: $($develDir.FullName)"
+
+          $env:CGO_CFLAGS  = "-DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
+          $env:CGO_LDFLAGS = "-L$vcpkgRoot\lib -lbrotlienc -L$watcherRoot -llibwatcher-c -L$phpBinDir -L$($develDir.FullName)\lib -lphp8ts -lphp8embed"
+          $env:CC  = "clang"
+          $env:CXX = "clang++"
+          $env:PATH = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\bin;$vcpkgRoot\bin;$watcherRoot;$phpBinDir;" + $env:PATH
+
+          Push-Location frankenphp\caddy\frankenphp
+          go build `
+            -tags nobadger,nomysql,nopgx `
+            -ldflags="-extldflags=-fuse-ld=lld -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP $version PHP $phpVersion Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Package FrankenPHP
+        if: matrix.build_type == 'Release'
+        shell: pwsh
+        run: |
+          $version    = "${{ needs.config.outputs.version }}"
+          $phpVersion = "${{ needs.config.outputs.php_version }}"
+          $phpBinDir  = "$env:PHP_BUILD_OBJ_DIR\Release_TS"
+          $vcpkgRoot  = "C:\vcpkg\installed\x64-windows"
+          $watcherRoot = "$env:GITHUB_WORKSPACE\watcher"
+          $phpSrc     = "$env:GITHUB_WORKSPACE\php-src"
+          $archive    = "php-trueasync-${version}-php${phpVersion}-windows-x64-frankenphp.zip"
+
+          $stageDir = "$env:GITHUB_WORKSPACE\frankenphp-stage"
+          New-Item -ItemType Directory -Force -Path "$stageDir\ext" | Out-Null
+
+          # FrankenPHP binary
+          Copy-Item "frankenphp\caddy\frankenphp\frankenphp.exe" $stageDir -Force
+
+          # PHP runtime DLL
+          Copy-Item "$phpBinDir\php8ts.dll" $stageDir -Force
+
+          # Watcher
+          Copy-Item "$watcherRoot\libwatcher-c.dll" $stageDir -Force
+
+          # Brotli DLLs
+          foreach ($dll in @("brotlienc.dll", "brotlidec.dll", "brotlicommon.dll")) {
+            Copy-Item "$vcpkgRoot\bin\$dll" $stageDir -Force
+          }
+
+          # Pthreads DLL
+          Copy-Item "$vcpkgRoot\bin\pthreadVC3.dll" $stageDir -Force
+
+          # Extension DLLs (async etc.) → ext/
+          Get-ChildItem $phpBinDir -Filter "php_*.dll" |
+            Copy-Item -Destination "$stageDir\ext" -Force
+
+          # php.ini from production template
+          $iniSrc = Join-Path $phpSrc "php.ini-production"
+          if (Test-Path $iniSrc) { Copy-Item $iniSrc "$stageDir\php.ini" -Force }
+          Add-Content -Path "$stageDir\php.ini" -Value @(
+            "",
+            "extension_dir = `"ext`"",
+            "extension=async"
+          )
+
+          Compress-Archive -Path "$stageDir\*" -DestinationPath "$env:GITHUB_WORKSPACE\$archive" -Force
+          "FRANKENPHP_ARCHIVE=$archive" >> $env:GITHUB_ENV
+          Write-Host "Packaged: $archive"
+
+      - name: Upload FrankenPHP artifact
+        if: ${{ !inputs.test_only && matrix.build_type == 'Release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-frankenphp
+          path: ${{ env.FRANKENPHP_ARCHIVE }}
+          retention-days: 5
+
+      # ── PHP package ───────────────────────────────────────────────────────
       - name: Package
         shell: pwsh
         run: |
@@ -528,6 +655,7 @@ jobs:
             ### Downloads
             - **Release** build — for general use
             - **Debug** build — for PHP/extension development (includes debug symbols and assertions)
+            - **FrankenPHP** build — `frankenphp.exe` + PHP runtime, ready to run
 
             ### Installation
 
@@ -601,6 +729,13 @@ jobs:
                   "label": "Debug",
                   "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-debug.zip"'",
                   "size": "~35 MB",
+                  "sha256": "see sha256sums.txt in release"
+                },
+                {
+                  "name": "php-trueasync-'"${VERSION}"'-php'"${PHP_VERSION}"'-windows-x64-frankenphp.zip",
+                  "label": "FrankenPHP",
+                  "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-frankenphp.zip"'",
+                  "size": "~25 MB",
                   "sha256": "see sha256sums.txt in release"
                 }
               ]
