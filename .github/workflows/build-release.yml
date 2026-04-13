@@ -249,11 +249,18 @@ jobs:
 
       - name: Setup LibUV
         shell: powershell
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-cache
         run: |
+          # Install ninja so vcpkg bootstrap doesn't try to download it
+          choco install ninja -y --no-progress | Out-Null
+
           if (!(Test-Path "C:\vcpkg")) {
-            git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-            C:\vcpkg\bootstrap-vcpkg.bat
+            git clone --depth 1 --branch 2025.04.09 https://github.com/Microsoft/vcpkg.git C:\vcpkg
+            C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
           }
+
+          New-Item -ItemType Directory -Force -Path C:\vcpkg-cache | Out-Null
           C:\vcpkg\vcpkg.exe install libuv:x64-windows-static-md
 
       - name: Setup PHP SDK
@@ -398,6 +405,8 @@ jobs:
       - name: Install vcpkg brotli and pthreads (FrankenPHP)
         if: matrix.build_type == 'Release'
         shell: powershell
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-cache
         run: |
           C:\vcpkg\vcpkg.exe install brotli:x64-windows pthreads:x64-windows
 
