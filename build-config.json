@@ -3,23 +3,23 @@
   "php_is_latest": true,
   "php_src": {
     "repo": "true-async/php-src",
-    "branch": "php-8.6.0-trueasync-0.6.6"
+    "branch": "php-8.6.0-trueasync-0.6.7"
   },
   "extensions": {
     "async": {
       "repo": "true-async/php-async",
-      "branch": "v0.6.6",
+      "branch": "v0.6.7",
       "path": "ext/async"
     },
     "xdebug": {
       "repo": "true-async/xdebug",
-      "branch": "true-async-86",
+      "branch": "php-8.6.0-trueasync-0.6.7",
       "path": "ext/xdebug"
     }
   },
   "frankenphp": {
     "repo": "true-async/frankenphp",
-    "branch": "trueasync-0.6.6"
+    "branch": "trueasync-0.6.7"
   },
   "requirements": {
     "libuv": "latest"
