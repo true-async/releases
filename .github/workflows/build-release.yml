@@ -252,8 +252,8 @@ jobs:
         env:
           VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-cache
         run: |
-          # Install ninja so vcpkg bootstrap doesn't try to download it
-          choco install ninja -y --no-progress | Out-Null
+          # Install cmake and ninja so vcpkg doesn't try to download them
+          choco install cmake ninja -y --no-progress | Out-Null
 
           if (!(Test-Path "C:\vcpkg")) {
             git clone --depth 1 --branch 2025.04.09 https://github.com/Microsoft/vcpkg.git C:\vcpkg
