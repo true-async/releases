@@ -491,54 +491,43 @@ jobs:
         run: |
           $version    = "${{ needs.config.outputs.version }}"
           $phpVersion = "${{ needs.config.outputs.php_version }}"
-          $phpBinDir  = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
           $vcpkgRoot  = "C:\vcpkg\installed\x64-windows"
           $watcherRoot = "$env:GITHUB_WORKSPACE\watcher"
-          $phpSrc     = "$env:GITHUB_WORKSPACE\php-src"
           $suffix     = "${{ matrix.artifact_suffix }}"
           $archive    = "php-trueasync-${version}-php${phpVersion}-windows-x64${suffix}-frankenphp.zip"
 
+          # Slim addon package: only FrankenPHP-specific files. The user
+          # installs the main PHP archive first (which already contains
+          # php8ts*.dll, ext/php_*.dll and php.ini), then extracts this
+          # archive on top. This avoids shipping ~30 MiB of duplicate PHP
+          # binaries in every FrankenPHP release.
+
           $stageDir = "$env:GITHUB_WORKSPACE\frankenphp-stage"
-          New-Item -ItemType Directory -Force -Path "$stageDir\ext" | Out-Null
+          New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
 
           # FrankenPHP binary
           Copy-Item "frankenphp\caddy\frankenphp\frankenphp.exe" $stageDir -Force
 
-          # PHP runtime DLL (debug builds name it php8ts_debug.dll)
-          $phpDll = Get-ChildItem -Path $phpBinDir -Filter "php*ts*.dll" |
-                    Where-Object { $_.Name -notmatch "^php_" } |
-                    Select-Object -First 1
-          if (-not $phpDll) { Write-Error "Could not locate php*ts*.dll in $phpBinDir"; exit 1 }
-          Write-Host "PHP runtime DLL: $($phpDll.Name)"
-          Copy-Item $phpDll.FullName $stageDir -Force
-
-          # Watcher
+          # Watcher (FrankenPHP-only dep)
           Copy-Item "$watcherRoot\libwatcher-c.dll" $stageDir -Force
 
-          # Brotli DLLs
+          # Brotli DLLs — the vcpkg builds FrankenPHP was linked against.
+          # Main PHP ships its own brotli from deps, but FrankenPHP's cgo
+          # LDFLAGS point at vcpkg, so the versions can differ. Ship the
+          # ones that match FrankenPHP's import table.
           foreach ($dll in @("brotlienc.dll", "brotlidec.dll", "brotlicommon.dll")) {
             Copy-Item "$vcpkgRoot\bin\$dll" $stageDir -Force
           }
 
-          # Pthreads DLL
+          # Pthreads-for-Windows (FrankenPHP cgo LDFLAGS: -lpthreadVC3)
           Copy-Item "$vcpkgRoot\bin\pthreadVC3.dll" $stageDir -Force
-
-          # Extension DLLs (async etc.) → ext/
-          Get-ChildItem $phpBinDir -Filter "php_*.dll" |
-            Copy-Item -Destination "$stageDir\ext" -Force
-
-          # php.ini from production template
-          $iniSrc = Join-Path $phpSrc "php.ini-production"
-          if (Test-Path $iniSrc) { Copy-Item $iniSrc "$stageDir\php.ini" -Force }
-          Add-Content -Path "$stageDir\php.ini" -Value @(
-            "",
-            "extension_dir = `"ext`"",
-            "extension=async"
-          )
 
           Compress-Archive -Path "$stageDir\*" -DestinationPath "$env:GITHUB_WORKSPACE\$archive" -Force
           "FRANKENPHP_ARCHIVE=$archive" >> $env:GITHUB_ENV
           Write-Host "Packaged: $archive"
+          Write-Host ""
+          Write-Host "Archive contents:"
+          Get-ChildItem $stageDir | Format-Table Name, @{N='Size';E={'{0:N0}' -f $_.Length}}
 
       - name: Upload FrankenPHP artifact
         if: ${{ !inputs.test_only }}
