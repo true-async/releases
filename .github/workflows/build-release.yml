@@ -504,8 +504,13 @@ jobs:
           # FrankenPHP binary
           Copy-Item "frankenphp\caddy\frankenphp\frankenphp.exe" $stageDir -Force
 
-          # PHP runtime DLL
-          Copy-Item "$phpBinDir\php8ts.dll" $stageDir -Force
+          # PHP runtime DLL (debug builds name it php8ts_debug.dll)
+          $phpDll = Get-ChildItem -Path $phpBinDir -Filter "php*ts*.dll" |
+                    Where-Object { $_.Name -notmatch "^php_" } |
+                    Select-Object -First 1
+          if (-not $phpDll) { Write-Error "Could not locate php*ts*.dll in $phpBinDir"; exit 1 }
+          Write-Host "PHP runtime DLL: $($phpDll.Name)"
+          Copy-Item $phpDll.FullName $stageDir -Force
 
           # Watcher
           Copy-Item "$watcherRoot\libwatcher-c.dll" $stageDir -Force
@@ -573,8 +578,8 @@ jobs:
           Get-ChildItem $buildDir -Filter "php_*.dll" |
             Copy-Item -Destination "$stageDir\ext" -Force
 
-          # ── Import library → dev/ ─────────────────────────────────────────────
-          Get-ChildItem $buildDir -Filter "php*ts.lib" |
+          # ── Import library → dev/ (php8ts.lib or php8ts_debug.lib) ───────────
+          Get-ChildItem $buildDir -Filter "php*ts*.lib" |
             Copy-Item -Destination "$stageDir\dev" -Force
 
           # ── php.ini templates from php-src ────────────────────────────────────
