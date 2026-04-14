@@ -452,11 +452,13 @@ jobs:
           # ZEND_FILE_LINE_DC arguments). When FrankenPHP is built against the debug
           # devel pack, Clang must see the same define or it'll generate calls with
           # the short signature and the link will fail with "undefined symbol _emalloc".
-          $debugFlags = ""
-          if ("${{ matrix.build_type }}" -eq "Debug") {
-            $debugFlags = "-DZEND_DEBUG=1 -UNDEBUG -UNDebug"
-          }
-          $env:CGO_CFLAGS  = "$clangBuiltins $debugFlags -DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
+          #
+          # NOTE: setting -DZEND_DEBUG=1 via $env:CGO_CFLAGS does NOT work because the
+          # `// #cgo windows CFLAGS:` directive in frankenphp/cgo_windows.go is appended
+          # AFTER env vars and hardcodes -DZEND_DEBUG=0, overriding our value.
+          # The fix is to use a Go build tag (`zend_debug`) which selects
+          # frankenphp/cgo_windows_debug.go instead, where -DZEND_DEBUG=1 lives.
+          $env:CGO_CFLAGS  = "$clangBuiltins -DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
           # Debug PHP builds name the main DLL/LIB as php8ts_debug.lib (see
           # php-src/win32/build/confutils.js, DEFINE("PHPLIB", ...)). The embed
           # SAPI keeps the plain php8embed.lib name in both builds.
@@ -468,9 +470,18 @@ jobs:
           $env:CXX = "clang++"
           $env:PATH = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\bin;$vcpkgRoot\bin;$watcherRoot;$phpBinDir;" + $env:PATH
 
+          # The `zend_debug` build tag makes frankenphp/cgo_windows_debug.go take over
+          # from cgo_windows.go and pass -DZEND_DEBUG=1 to clang, matching how
+          # php8ts_debug.lib was compiled.
+          $buildTags = "nobadger,nomysql,nopgx"
+          if ("${{ matrix.build_type }}" -eq "Debug") {
+            $buildTags = "zend_debug,$buildTags"
+          }
+          Write-Host "Go build tags: $buildTags"
+
           Push-Location frankenphp\caddy\frankenphp
           go build `
-            -tags nobadger,nomysql,nopgx `
+            -tags "$buildTags" `
             -ldflags="-extldflags=-fuse-ld=lld -X 'github.com/caddyserver/caddy/v2.CustomVersion=FrankenPHP $version PHP $phpVersion Caddy' -X 'github.com/caddyserver/caddy/v2.CustomBinaryName=frankenphp' -X 'github.com/caddyserver/caddy/v2/modules/caddyhttp.ServerHeader=FrankenPHP Caddy'"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Pop-Location
