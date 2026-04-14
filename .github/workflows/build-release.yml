@@ -733,7 +733,10 @@ jobs:
           TAG="v${VERSION}"
           BASE_URL="https://github.com/true-async/releases/releases"
 
-          # Mark all existing versions as old
+          # Remove any existing entries for this version (idempotent on re-tag)
+          yq -i ".versions |= map(select((.version | tostring) != \"${VERSION}\"))" _data/releases.yml
+
+          # Mark all remaining versions as old
           yq -i '.versions[].old = true' _data/releases.yml
 
           # Prepend new version entry
