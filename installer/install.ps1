@@ -481,10 +481,9 @@ function Do-Install {
         Write-Done "Installed" $script:InstallDir
 
         # ── FrankenPHP (optional) ─────────────────────────────────────────────
-        # Extract on top of main install. Overlapping files (php8ts*.dll,
-        # ext/php_async.dll, ...) are bit-identical because both archives come
-        # from the same CI run. The main package's php.ini is preserved by
-        # skipping it during copy.
+        # The -frankenphp.zip archive is a slim addon: just frankenphp.exe,
+        # libwatcher-c.dll, brotli*.dll and pthreadVC3.dll — no duplicate PHP
+        # runtime or extensions. Extract straight on top of the main install.
 
         if ($installFranken) {
             $frankenUrl  = "$baseUrl/$frankenArchive"
@@ -508,22 +507,9 @@ function Do-Install {
                 }
             }
 
-            # Extract to temp dir, then copy everything except php.ini
-            $frankenStage = Join-Path $tmpDir "frankenphp-stage"
-            New-Item -ItemType Directory -Force -Path $frankenStage | Out-Null
-            Expand-Archive -Path $frankenPath -DestinationPath $frankenStage -Force
-
-            Get-ChildItem -Path $frankenStage -Recurse -File |
-                Where-Object { $_.Name -ne "php.ini" } |
-                ForEach-Object {
-                    $rel  = $_.FullName.Substring($frankenStage.Length).TrimStart('\','/')
-                    $dest = Join-Path $script:InstallDir $rel
-                    $destDir = Split-Path $dest -Parent
-                    if (-not (Test-Path $destDir)) {
-                        New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-                    }
-                    Copy-Item -Path $_.FullName -Destination $dest -Force
-                }
+            Write-Pending "Extracting FrankenPHP"
+            Expand-Archive -Path $frankenPath -DestinationPath $script:InstallDir -Force
+            Write-Done "Extracted FrankenPHP"
         }
 
         # ── PATH ──────────────────────────────────────────────────────────────
