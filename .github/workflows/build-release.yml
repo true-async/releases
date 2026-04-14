@@ -720,86 +720,80 @@ jobs:
           repository: true-async/true-async.github.io
           token: ${{ secrets.SITE_DEPLOY_TOKEN }}
 
-      - name: Install yq
+      - name: Update releases.json
         run: |
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
-
-      - name: Update releases.yml
-        run: |
+          set -euo pipefail
           VERSION="${{ needs.config.outputs.version }}"
           PHP_VERSION="${{ needs.config.outputs.php_version }}"
           DATE="$(date +%Y-%m-%d)"
           TAG="v${VERSION}"
           BASE_URL="https://github.com/true-async/releases/releases"
+          DATA_FILE=".vitepress/data/releases.json"
 
-          # Remove any existing entries for this version (idempotent on re-tag)
-          yq -i ".versions |= map(select((.version | tostring) != \"${VERSION}\"))" _data/releases.yml
+          # New version entry — FrankenPHP addons included.
+          NEW_ENTRY=$(jq -n \
+            --arg version      "${VERSION}" \
+            --arg date         "${DATE}" \
+            --arg php_version  "${PHP_VERSION}" \
+            --arg changelog    "${BASE_URL}/tag/${TAG}" \
+            --arg zip          "${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64.zip" \
+            --arg zip_debug    "${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-debug.zip" \
+            --arg zip_fp       "${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-frankenphp.zip" \
+            --arg zip_fp_debug "${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-debug-frankenphp.zip" \
+            '{
+              version: $version,
+              date: $date,
+              php_requires: ("PHP " + $php_version + "-dev (ZTS)"),
+              changelog_url: $changelog,
+              old: false,
+              platforms: [{
+                name: "Windows",
+                files: [
+                  { name: ($zip       | split("/") | last), label: "Release",          url: $zip,       size: "~38 MB", sha256: "see sha256sums.txt in release" },
+                  { name: ($zip_debug | split("/") | last), label: "Debug",            url: $zip_debug, size: "~36 MB", sha256: "see sha256sums.txt in release" },
+                  { name: ($zip_fp    | split("/") | last), label: "FrankenPHP",       url: $zip_fp,    size: "~19 MB", sha256: "see sha256sums.txt in release" },
+                  { name: ($zip_fp_debug | split("/") | last), label: "FrankenPHP Debug", url: $zip_fp_debug, size: "~19 MB", sha256: "see sha256sums.txt in release" }
+                ]
+              }]
+            }')
 
-          # Mark all remaining versions as old
-          yq -i '.versions[].old = true' _data/releases.yml
-
-          # Prepend new version entry
-          yq -i '.versions = [{
-            "version": "'"${VERSION}"'",
-            "date": "'"${DATE}"'",
-            "php_requires": "PHP '"${PHP_VERSION}"'-dev (ZTS)",
-            "changelog_url": "'"${BASE_URL}/tag/${TAG}"'",
-            "old": false,
-            "platforms": [{
-              "name": "Windows",
-              "files": [
-                {
-                  "name": "php-trueasync-'"${VERSION}"'-php'"${PHP_VERSION}"'-windows-x64.zip",
-                  "label": "Release",
-                  "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64.zip"'",
-                  "size": "~38 MB",
-                  "sha256": "see sha256sums.txt in release"
-                },
-                {
-                  "name": "php-trueasync-'"${VERSION}"'-php'"${PHP_VERSION}"'-windows-x64-debug.zip",
-                  "label": "Debug",
-                  "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-debug.zip"'",
-                  "size": "~35 MB",
-                  "sha256": "see sha256sums.txt in release"
-                },
-                {
-                  "name": "php-trueasync-'"${VERSION}"'-php'"${PHP_VERSION}"'-windows-x64-frankenphp.zip",
-                  "label": "FrankenPHP",
-                  "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-frankenphp.zip"'",
-                  "size": "~25 MB",
-                  "sha256": "see sha256sums.txt in release"
-                },
-                {
-                  "name": "php-trueasync-'"${VERSION}"'-php'"${PHP_VERSION}"'-windows-x64-debug-frankenphp.zip",
-                  "label": "FrankenPHP Debug",
-                  "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-debug-frankenphp.zip"'",
-                  "size": "~30 MB",
-                  "sha256": "see sha256sums.txt in release"
-                }
-              ]
-            }]
-          }] + .versions' _data/releases.yml
-
-          # Update Docker image tags
-          yq -i '.docker_images = [
-            {"tag": "trueasync/php-true-async:'"${VERSION}-php${PHP_VERSION}"'", "description": "Ubuntu 24.04 — CLI + FPM"},
-            {"tag": "trueasync/php-true-async:'"${VERSION}-php${PHP_VERSION}-alpine"'", "description": "Alpine 3.20 — CLI + FPM (lightweight)"},
-            {"tag": "trueasync/php-true-async:'"${VERSION}-php${PHP_VERSION}-debug"'", "description": "Ubuntu 24.04 — CLI + FPM (debug symbols)"},
-            {"tag": "trueasync/php-true-async:'"${VERSION}-php${PHP_VERSION}-frankenphp"'", "description": "Ubuntu 24.04 — FrankenPHP (Caddy + async worker)"},
-            {"tag": "trueasync/php-true-async:latest", "description": "Ubuntu 24.04 — alias for latest stable"},
-            {"tag": "trueasync/php-true-async:latest-alpine", "description": "Alpine 3.20 — alias for latest stable"},
+          # Fresh docker_images for this version.
+          NEW_DOCKER=$(jq -n --arg v "${VERSION}" --arg pv "${PHP_VERSION}" '[
+            {"tag": ("trueasync/php-true-async:" + $v + "-php" + $pv),              "description": "Ubuntu 24.04 — CLI + FPM"},
+            {"tag": ("trueasync/php-true-async:" + $v + "-php" + $pv + "-alpine"),  "description": "Alpine 3.20 — CLI + FPM (lightweight)"},
+            {"tag": ("trueasync/php-true-async:" + $v + "-php" + $pv + "-debug"),   "description": "Ubuntu 24.04 — CLI + FPM (debug symbols)"},
+            {"tag": ("trueasync/php-true-async:" + $v + "-php" + $pv + "-frankenphp"), "description": "Ubuntu 24.04 — FrankenPHP (Caddy + async worker)"},
+            {"tag": "trueasync/php-true-async:latest",            "description": "Ubuntu 24.04 — alias for latest stable"},
+            {"tag": "trueasync/php-true-async:latest-alpine",     "description": "Alpine 3.20 — alias for latest stable"},
             {"tag": "trueasync/php-true-async:latest-frankenphp", "description": "FrankenPHP — alias for latest stable"}
-          ]' _data/releases.yml
+          ]')
 
-          echo "Updated releases.yml for v${VERSION}"
-          cat _data/releases.yml
+          # Transform: dedupe by version (idempotent on re-tag), mark others old, prepend new.
+          jq --argjson entry "$NEW_ENTRY" --argjson docker "$NEW_DOCKER" --arg v "${VERSION}" '
+            .dockerImages = $docker
+            | .versions = (
+                [$entry]
+                + (.versions
+                    | map(select((.version | tostring) != $v))
+                    | map(.old = true))
+              )
+          ' "${DATA_FILE}" > "${DATA_FILE}.tmp"
+          mv "${DATA_FILE}.tmp" "${DATA_FILE}"
+
+          echo "Updated ${DATA_FILE} for v${VERSION}"
+          jq '.versions | map({version, old})' "${DATA_FILE}"
 
       - name: Commit and push
         run: |
+          set -euo pipefail
+          DATA_FILE=".vitepress/data/releases.json"
+          if git diff --quiet "${DATA_FILE}"; then
+            echo "No changes to ${DATA_FILE}, skipping commit."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add _data/releases.yml
+          git add "${DATA_FILE}"
           git commit -m "Update download page for v${{ needs.config.outputs.version }}"
           git pull --rebase
           git push
