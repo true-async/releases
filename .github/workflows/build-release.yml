@@ -442,7 +442,11 @@ jobs:
           if (-not $develDir) { Write-Error "PHP devel dir not found in $phpBinDir"; exit 1 }
           Write-Host "PHP devel dir: $($develDir.FullName)"
 
-          $env:CGO_CFLAGS  = "-DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
+          # PHP devel headers are built with MSVC, but FrankenPHP compiles with Clang.
+          # Tell zend_operators.h to use Clang's __builtin_*_overflow() instead of MSVC's LongLongAdd/Sub
+          # (same defines PHP itself sets in win32/build/config.w32 for CLANG_TOOLSET).
+          $clangBuiltins = "-DPHP_HAVE_BUILTIN_SADDL_OVERFLOW -DPHP_HAVE_BUILTIN_SADDLL_OVERFLOW -DPHP_HAVE_BUILTIN_SSUBL_OVERFLOW -DPHP_HAVE_BUILTIN_SSUBLL_OVERFLOW -DPHP_HAVE_BUILTIN_SMULL_OVERFLOW -DPHP_HAVE_BUILTIN_SMULLL_OVERFLOW"
+          $env:CGO_CFLAGS  = "$clangBuiltins -DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
           $env:CGO_LDFLAGS = "-L$vcpkgRoot\lib -lbrotlienc -L$watcherRoot -llibwatcher-c -L$phpBinDir -L$($develDir.FullName)\lib -lphp8ts -lphp8embed"
           $env:CC  = "clang"
           $env:CXX = "clang++"
