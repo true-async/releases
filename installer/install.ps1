@@ -13,10 +13,11 @@
       INSTALL_DIR      Custom installation path
       VERSION          Specific version to install (e.g. "v0.1.0")
       PHP_VERSION      Specific PHP version (e.g. "8.6")
-      SET_DEFAULT      "true"/"false" to control PATH (default: prompt)
-      DEBUG_BUILD      "true" to install debug build (default: prompt)
-      SKIP_VERIFY      "true" to skip checksum verification
-      NON_INTERACTIVE  "true" to skip all prompts and use defaults
+      SET_DEFAULT        "true"/"false" to control PATH (default: prompt)
+      DEBUG_BUILD        "true" to install debug build (default: prompt)
+      INSTALL_FRANKENPHP "true" to also install FrankenPHP (default: prompt)
+      SKIP_VERIFY        "true" to skip checksum verification
+      NON_INTERACTIVE    "true" to skip all prompts and use defaults
 #>
 
 $ErrorActionPreference = "Stop"
@@ -30,8 +31,9 @@ $InstallDir  = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { $DefaultDir }
 $Version     = if ($env:VERSION)     { $env:VERSION }     else { "latest" }
 $PhpVersion  = $env:PHP_VERSION
 $SkipVerify  = $env:SKIP_VERIFY -eq "true"
-$SetDefault  = $env:SET_DEFAULT   # "true" | "false" | empty = prompt
-$DebugBuild  = $env:DEBUG_BUILD   # "true" | "false" | empty = prompt
+$SetDefault  = $env:SET_DEFAULT         # "true" | "false" | empty = prompt
+$DebugBuild  = $env:DEBUG_BUILD         # "true" | "false" | empty = prompt
+$WithFranken = $env:INSTALL_FRANKENPHP  # "true" | "false" | empty = prompt
 $VersionFile = ".trueasync-version"
 $Command     = if ($env:TRUEASYNC_CMD) { $env:TRUEASYNC_CMD } else { "install" }
 
@@ -140,14 +142,16 @@ function Write-PreInstall {
         [string]$Dir,
         [string]$Platform,
         [bool]$PathFlag,
-        [bool]$Debug
+        [bool]$Debug,
+        [bool]$Franken
     )
     $items = [ordered]@{}
-    $items["Version"]  = $Ver
-    $items["Build"]    = if ($Debug) { "debug" } else { "release" }
-    $items["Platform"] = $Platform
-    $items["Location"] = $Dir
-    $items["PATH"]     = if ($PathFlag) { "will be added" } else { "skip" }
+    $items["Version"]    = $Ver
+    $items["Build"]      = if ($Debug) { "debug" } else { "release" }
+    $items["Platform"]   = $Platform
+    $items["Location"]   = $Dir
+    $items["FrankenPHP"] = if ($Franken) { "will be installed" } else { "skip" }
+    $items["PATH"]       = if ($PathFlag) { "will be added" } else { "skip" }
     Write-Summary $items
 }
 
@@ -342,6 +346,13 @@ function Do-Install {
         $useDebug = Read-YesNo "  Debug build?" $false
     }
 
+    $installFranken = $false
+    if ($null -ne $WithFranken -and $WithFranken -ne "") {
+        $installFranken = ($WithFranken -eq "true")
+    } else {
+        $installFranken = Read-YesNo "  Install FrankenPHP?" $false
+    }
+
     $addToPath = $false
     if ($null -ne $SetDefault -and $SetDefault -ne "") {
         $addToPath = ($SetDefault -eq "true")
@@ -351,7 +362,7 @@ function Do-Install {
 
     # ── Pre-install summary (rustup-style: show what WILL happen) ────────────
 
-    Write-PreInstall -Ver $script:Version -Dir $script:InstallDir -Platform $platform -PathFlag $addToPath -Debug $useDebug
+    Write-PreInstall -Ver $script:Version -Dir $script:InstallDir -Platform $platform -PathFlag $addToPath -Debug $useDebug -Franken $installFranken
 
     if ($IsInteractive) {
         $proceed = Read-YesNo "  Proceed with installation?" $true
@@ -369,9 +380,13 @@ function Do-Install {
     $versionNum = $script:Version.TrimStart("v")
     $baseUrl    = "https://github.com/$Repo/releases/download/$($script:Version)"
 
+    $frankenArchive = $null
     if ($script:PhpVersion) {
         $suffix  = if ($useDebug) { "-debug" } else { "" }
         $archive = "php-trueasync-${versionNum}-php$($script:PhpVersion)-${platform}${suffix}.zip"
+        if ($installFranken) {
+            $frankenArchive = "php-trueasync-${versionNum}-php$($script:PhpVersion)-${platform}${suffix}-frankenphp.zip"
+        }
     } else {
         $releaseUrl = "https://api.github.com/repos/$Repo/releases/tags/$($script:Version)"
         $release    = Invoke-RestMethod -Uri $releaseUrl -Headers @{ "User-Agent" = "TrueAsync-Installer" }
@@ -379,7 +394,7 @@ function Do-Install {
             if ($useDebug) {
                 $_.name -match "^php-trueasync-.*-${platform}-debug\.zip$"
             } else {
-                $_.name -match "^php-trueasync-.*-${platform}\.zip$" -and $_.name -notmatch "-debug"
+                $_.name -match "^php-trueasync-.*-${platform}\.zip$" -and $_.name -notmatch "-debug" -and $_.name -notmatch "-frankenphp"
             }
         } | Select-Object -First 1
         if (-not $asset) {
@@ -387,11 +402,29 @@ function Do-Install {
             Write-Fail "No $buildType asset found for $platform. Set PHP_VERSION to specify a PHP version."
         }
         $archive = $asset.name
+
+        if ($installFranken) {
+            $frankenAsset = $release.assets | Where-Object {
+                if ($useDebug) {
+                    $_.name -match "^php-trueasync-.*-${platform}-debug-frankenphp\.zip$"
+                } else {
+                    $_.name -match "^php-trueasync-.*-${platform}-frankenphp\.zip$" -and $_.name -notmatch "-debug-"
+                }
+            } | Select-Object -First 1
+            if (-not $frankenAsset) {
+                $buildType = if ($useDebug) { "debug" } else { "release" }
+                Write-Warn "No $buildType FrankenPHP asset found for $platform — skipping FrankenPHP"
+                $installFranken = $false
+            } else {
+                $frankenArchive = $frankenAsset.name
+            }
+        }
     }
 
-    # ── Numbered steps: Download → [Verify] → Install ────────────────────────
+    # ── Numbered steps: Download → [Verify] → Install [→ FrankenPHP] ────────
 
     $numSteps = if ($SkipVerify) { 2 } else { 3 }
+    if ($installFranken) { $numSteps += if ($SkipVerify) { 1 } else { 2 } }
     Set-TotalSteps $numSteps
 
     $tmpDir       = Join-Path $env:TEMP "php-trueasync-install-$(Get-Random)"
@@ -447,6 +480,52 @@ function Do-Install {
 
         Write-Done "Installed" $script:InstallDir
 
+        # ── FrankenPHP (optional) ─────────────────────────────────────────────
+        # Extract on top of main install. Overlapping files (php8ts*.dll,
+        # ext/php_async.dll, ...) are bit-identical because both archives come
+        # from the same CI run. The main package's php.ini is preserved by
+        # skipping it during copy.
+
+        if ($installFranken) {
+            $frankenUrl  = "$baseUrl/$frankenArchive"
+            $frankenPath = Join-Path $tmpDir $frankenArchive
+
+            Write-Pending "Downloading FrankenPHP"
+            Invoke-WebRequest -Uri $frankenUrl -OutFile $frankenPath -UseBasicParsing `
+                -Headers @{ "User-Agent" = "TrueAsync-Installer" }
+            $fsize = Get-FormattedSize $frankenPath
+            Write-Done "Downloaded FrankenPHP" $fsize
+
+            if (-not $SkipVerify) {
+                Write-Pending "Verifying FrankenPHP checksum"
+                $fline = Get-Content $checksumPath | Where-Object { $_ -match [regex]::Escape($frankenArchive) }
+                if ($fline) {
+                    $fexpected = ($fline -split '\s+')[0]
+                    Test-Checksum -File $frankenPath -Expected $fexpected
+                    Write-Done "FrankenPHP checksum verified"
+                } else {
+                    Write-Done "FrankenPHP checksum" "not in manifest — skipped" "Yellow"
+                }
+            }
+
+            # Extract to temp dir, then copy everything except php.ini
+            $frankenStage = Join-Path $tmpDir "frankenphp-stage"
+            New-Item -ItemType Directory -Force -Path $frankenStage | Out-Null
+            Expand-Archive -Path $frankenPath -DestinationPath $frankenStage -Force
+
+            Get-ChildItem -Path $frankenStage -Recurse -File |
+                Where-Object { $_.Name -ne "php.ini" } |
+                ForEach-Object {
+                    $rel  = $_.FullName.Substring($frankenStage.Length).TrimStart('\','/')
+                    $dest = Join-Path $script:InstallDir $rel
+                    $destDir = Split-Path $dest -Parent
+                    if (-not (Test-Path $destDir)) {
+                        New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+                    }
+                    Copy-Item -Path $_.FullName -Destination $dest -Force
+                }
+        }
+
         # ── PATH ──────────────────────────────────────────────────────────────
 
         $pathStatus = "not added"
@@ -483,6 +562,12 @@ function Do-Install {
         $summary = [ordered]@{}
         $summary["Location"] = $script:InstallDir
         $summary["Version"]  = $script:Version
+        if ($installFranken) {
+            $frankenExe = Join-Path $script:InstallDir "frankenphp.exe"
+            if (Test-Path $frankenExe) {
+                $summary["FrankenPHP"] = $frankenExe
+            }
+        }
         $summary["PATH"]     = $pathStatus
         $summary["Run"]      = if ($addToPath) { "php --version" } else { "$($script:InstallDir)\php.exe --version" }
 
