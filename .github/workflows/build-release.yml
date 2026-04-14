@@ -447,7 +447,13 @@ jobs:
           # (same defines PHP itself sets in win32/build/config.w32 for CLANG_TOOLSET).
           $clangBuiltins = "-DPHP_HAVE_BUILTIN_SADDL_OVERFLOW -DPHP_HAVE_BUILTIN_SADDLL_OVERFLOW -DPHP_HAVE_BUILTIN_SSUBL_OVERFLOW -DPHP_HAVE_BUILTIN_SSUBLL_OVERFLOW -DPHP_HAVE_BUILTIN_SMULL_OVERFLOW -DPHP_HAVE_BUILTIN_SMULLL_OVERFLOW"
           $env:CGO_CFLAGS  = "$clangBuiltins -DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
-          $env:CGO_LDFLAGS = "-L$vcpkgRoot\lib -lbrotlienc -L$watcherRoot -llibwatcher-c -L$phpBinDir -L$($develDir.FullName)\lib -lphp8ts -lphp8embed"
+          # Debug PHP builds name the main DLL/LIB as php8ts_debug.lib (see
+          # php-src/win32/build/confutils.js, DEFINE("PHPLIB", ...)). The embed
+          # SAPI keeps the plain php8embed.lib name in both builds.
+          $phpLib = (Get-ChildItem -Path "$($develDir.FullName)\lib" -Filter "php*ts*.lib" | Select-Object -First 1).BaseName
+          if (-not $phpLib) { Write-Error "Could not locate php*ts*.lib in $($develDir.FullName)\lib"; exit 1 }
+          Write-Host "PHP lib basename: $phpLib"
+          $env:CGO_LDFLAGS = "-L$vcpkgRoot\lib -lbrotlienc -L$watcherRoot -llibwatcher-c -L$phpBinDir -L$($develDir.FullName)\lib -l$phpLib -lphp8embed"
           $env:CC  = "clang"
           $env:CXX = "clang++"
           $env:PATH = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\bin;$vcpkgRoot\bin;$watcherRoot;$phpBinDir;" + $env:PATH
