@@ -203,7 +203,7 @@ jobs:
             artifact_suffix: ""
           - build_type: Debug
             output_dir: Debug_TS
-            configure_flags: "--enable-debug"
+            configure_flags: "--enable-debug --enable-embed"
             install_prefix: "C:\\php-trueasync-debug"
             artifact_suffix: "-debug"
     env:
@@ -393,9 +393,8 @@ jobs:
           }
           Write-Host "SUCCESS: php_xdebug.dll found at $($dll.FullName)"
 
-      # ── FrankenPHP (Release only) ──────────────────────────────────────────
+      # ── FrankenPHP ────────────────────────────────────────────────────────
       - name: Checkout frankenphp
-        if: matrix.build_type == 'Release'
         uses: actions/checkout@v4
         with:
           repository: ${{ needs.config.outputs.frankenphp_repo }}
@@ -403,7 +402,6 @@ jobs:
           path: frankenphp
 
       - name: Install vcpkg brotli and pthreads (FrankenPHP)
-        if: matrix.build_type == 'Release'
         shell: powershell
         env:
           VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-cache
@@ -411,7 +409,6 @@ jobs:
           C:\vcpkg\vcpkg.exe install brotli:x64-windows pthreads:x64-windows
 
       - name: Download watcher (FrankenPHP)
-        if: matrix.build_type == 'Release'
         shell: powershell
         run: |
           $latestTag = gh release list --repo e-dant/watcher --limit 1 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[0].tagName'
@@ -423,7 +420,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Go (FrankenPHP)
-        if: matrix.build_type == 'Release'
         uses: actions/setup-go@v6
         with:
           go-version: "1.26"
@@ -433,21 +429,42 @@ jobs:
           check-latest: true
 
       - name: Build FrankenPHP
-        if: matrix.build_type == 'Release'
         shell: powershell
         run: |
           $version    = "${{ needs.config.outputs.version }}"
           $phpVersion = "${{ needs.config.outputs.php_version }}"
           $vcpkgRoot  = "C:\vcpkg\installed\x64-windows"
           $watcherRoot = "$env:GITHUB_WORKSPACE\watcher"
-          $phpBinDir  = "$env:PHP_BUILD_OBJ_DIR\Release_TS"
+          $phpBinDir  = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
 
           $develDir = Get-ChildItem -Path $phpBinDir -Directory -Filter "*-devel-*" -ErrorAction SilentlyContinue |
                       Select-Object -First 1
           if (-not $develDir) { Write-Error "PHP devel dir not found in $phpBinDir"; exit 1 }
           Write-Host "PHP devel dir: $($develDir.FullName)"
 
-          $env:CGO_CFLAGS  = "-DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
+          # LongLongAdd/LongLongSub are C++-only in Windows SDK 10.0.26100.0 — provide C polyfills
+          $polyfill = "$env:GITHUB_WORKSPACE\llsafe_polyfill.h"
+          Set-Content -Path $polyfill -Value @'
+#pragma once
+#include <windows.h>
+#include <limits.h>
+#ifndef LongLongAdd
+static __inline HRESULT LongLongAdd(LONGLONG a, LONGLONG b, LONGLONG* r) {
+    if ((b > 0 && a > 9223372036854775807LL - b) || (b < 0 && a < (-9223372036854775807LL-1) - b))
+        { *r = 9223372036854775807LL; return (HRESULT)0x80070216L; }
+    *r = a + b; return 0;
+}
+#endif
+#ifndef LongLongSub
+static __inline HRESULT LongLongSub(LONGLONG a, LONGLONG b, LONGLONG* r) {
+    if ((b < 0 && a > 9223372036854775807LL + b) || (b > 0 && a < (-9223372036854775807LL-1) + b))
+        { *r = (-9223372036854775807LL-1); return (HRESULT)0x80070216L; }
+    *r = a - b; return 0;
+}
+#endif
+'@
+
+          $env:CGO_CFLAGS  = "-DFRANKENPHP_VERSION=$version -include `"$polyfill`" -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
           $env:CGO_LDFLAGS = "-L$vcpkgRoot\lib -lbrotlienc -L$watcherRoot -llibwatcher-c -L$phpBinDir -L$($develDir.FullName)\lib -lphp8ts -lphp8embed"
           $env:CC  = "clang"
           $env:CXX = "clang++"
@@ -461,16 +478,16 @@ jobs:
           Pop-Location
 
       - name: Package FrankenPHP
-        if: matrix.build_type == 'Release'
         shell: pwsh
         run: |
           $version    = "${{ needs.config.outputs.version }}"
           $phpVersion = "${{ needs.config.outputs.php_version }}"
-          $phpBinDir  = "$env:PHP_BUILD_OBJ_DIR\Release_TS"
+          $phpBinDir  = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
           $vcpkgRoot  = "C:\vcpkg\installed\x64-windows"
           $watcherRoot = "$env:GITHUB_WORKSPACE\watcher"
           $phpSrc     = "$env:GITHUB_WORKSPACE\php-src"
-          $archive    = "php-trueasync-${version}-php${phpVersion}-windows-x64-frankenphp.zip"
+          $suffix     = "${{ matrix.artifact_suffix }}"
+          $archive    = "php-trueasync-${version}-php${phpVersion}-windows-x64${suffix}-frankenphp.zip"
 
           $stageDir = "$env:GITHUB_WORKSPACE\frankenphp-stage"
           New-Item -ItemType Directory -Force -Path "$stageDir\ext" | Out-Null
@@ -510,10 +527,10 @@ jobs:
           Write-Host "Packaged: $archive"
 
       - name: Upload FrankenPHP artifact
-        if: ${{ !inputs.test_only && matrix.build_type == 'Release' }}
+        if: ${{ !inputs.test_only }}
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x64-frankenphp
+          name: windows-x64${{ matrix.artifact_suffix }}-frankenphp
           path: ${{ env.FRANKENPHP_ARCHIVE }}
           retention-days: 5
 
@@ -745,6 +762,13 @@ jobs:
                   "label": "FrankenPHP",
                   "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-frankenphp.zip"'",
                   "size": "~25 MB",
+                  "sha256": "see sha256sums.txt in release"
+                },
+                {
+                  "name": "php-trueasync-'"${VERSION}"'-php'"${PHP_VERSION}"'-windows-x64-debug-frankenphp.zip",
+                  "label": "FrankenPHP Debug",
+                  "url": "'"${BASE_URL}/download/${TAG}/php-trueasync-${VERSION}-php${PHP_VERSION}-windows-x64-debug-frankenphp.zip"'",
+                  "size": "~30 MB",
                   "sha256": "see sha256sums.txt in release"
                 }
               ]
