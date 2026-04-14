@@ -442,29 +442,7 @@ jobs:
           if (-not $develDir) { Write-Error "PHP devel dir not found in $phpBinDir"; exit 1 }
           Write-Host "PHP devel dir: $($develDir.FullName)"
 
-          # LongLongAdd/LongLongSub are C++-only in Windows SDK 10.0.26100.0 — provide C polyfills
-          $polyfill = "$env:GITHUB_WORKSPACE\llsafe_polyfill.h"
-          Set-Content -Path $polyfill -Value @'
-#pragma once
-#include <windows.h>
-#include <limits.h>
-#ifndef LongLongAdd
-static __inline HRESULT LongLongAdd(LONGLONG a, LONGLONG b, LONGLONG* r) {
-    if ((b > 0 && a > 9223372036854775807LL - b) || (b < 0 && a < (-9223372036854775807LL-1) - b))
-        { *r = 9223372036854775807LL; return (HRESULT)0x80070216L; }
-    *r = a + b; return 0;
-}
-#endif
-#ifndef LongLongSub
-static __inline HRESULT LongLongSub(LONGLONG a, LONGLONG b, LONGLONG* r) {
-    if ((b < 0 && a > 9223372036854775807LL + b) || (b > 0 && a < (-9223372036854775807LL-1) + b))
-        { *r = (-9223372036854775807LL-1); return (HRESULT)0x80070216L; }
-    *r = a - b; return 0;
-}
-#endif
-'@
-
-          $env:CGO_CFLAGS  = "-DFRANKENPHP_VERSION=$version -include `"$polyfill`" -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
+          $env:CGO_CFLAGS  = "-DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
           $env:CGO_LDFLAGS = "-L$vcpkgRoot\lib -lbrotlienc -L$watcherRoot -llibwatcher-c -L$phpBinDir -L$($develDir.FullName)\lib -lphp8ts -lphp8embed"
           $env:CC  = "clang"
           $env:CXX = "clang++"
