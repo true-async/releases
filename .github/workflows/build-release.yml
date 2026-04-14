@@ -446,7 +446,17 @@ jobs:
           # Tell zend_operators.h to use Clang's __builtin_*_overflow() instead of MSVC's LongLongAdd/Sub
           # (same defines PHP itself sets in win32/build/config.w32 for CLANG_TOOLSET).
           $clangBuiltins = "-DPHP_HAVE_BUILTIN_SADDL_OVERFLOW -DPHP_HAVE_BUILTIN_SADDLL_OVERFLOW -DPHP_HAVE_BUILTIN_SSUBL_OVERFLOW -DPHP_HAVE_BUILTIN_SSUBLL_OVERFLOW -DPHP_HAVE_BUILTIN_SMULL_OVERFLOW -DPHP_HAVE_BUILTIN_SMULLL_OVERFLOW"
-          $env:CGO_CFLAGS  = "$clangBuiltins -DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
+          # PHP debug builds are compiled with /D ZEND_DEBUG=1 (see
+          # php-src/win32/build/confutils.js toolset_setup_build_mode). That changes
+          # the signatures of _emalloc/_efree/_estrdup/etc. (they get extra
+          # ZEND_FILE_LINE_DC arguments). When FrankenPHP is built against the debug
+          # devel pack, Clang must see the same define or it'll generate calls with
+          # the short signature and the link will fail with "undefined symbol _emalloc".
+          $debugFlags = ""
+          if ("${{ matrix.build_type }}" -eq "Debug") {
+            $debugFlags = "-DZEND_DEBUG=1 -UNDEBUG -UNDebug"
+          }
+          $env:CGO_CFLAGS  = "$clangBuiltins $debugFlags -DFRANKENPHP_VERSION=$version -I$vcpkgRoot\include -I$watcherRoot -I$($develDir.FullName)\include -I$($develDir.FullName)\include\main -I$($develDir.FullName)\include\TSRM -I$($develDir.FullName)\include\Zend -I$($develDir.FullName)\include\ext"
           # Debug PHP builds name the main DLL/LIB as php8ts_debug.lib (see
           # php-src/win32/build/confutils.js, DEFINE("PHPLIB", ...)). The embed
           # SAPI keeps the plain php8embed.lib name in both builds.
