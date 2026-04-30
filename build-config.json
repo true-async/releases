@@ -3,13 +3,17 @@
   "php_is_latest": true,
   "php_src": {
     "repo": "true-async/php-src",
-    "branch": "php-8.6.0-trueasync-0.6.7"
+    "branch": "php-8.6.0-trueasync-0.7.0-alpha"
   },
   "extensions": {
     "async": {
       "repo": "true-async/php-async",
-      "branch": "v0.6.7",
+      "branch": "v0.7.0-alpha",
       "path": "ext/async"
+    },
+    "server": {
+      "repo": "true-async/server",
+      "branch": "v0.1.0"
     },
     "xdebug": {
       "repo": "true-async/xdebug",
@@ -22,7 +26,12 @@
     "branch": "trueasync-0.6.7"
   },
   "requirements": {
-    "libuv": "latest"
+    "libuv": "1.52.1",
+    "openssl": "3.5.0",
+    "nghttp2": "1.59.0",
+    "nghttp3": "1.15.0",
+    "ngtcp2": "1.22.1",
+    "curl": "8.12.1"
   },
   "configure": {
     "common": [

@@ -44,8 +44,9 @@ PHP_BRANCH="${PHP_BRANCH:-}"
 NO_INTERACTIVE="${NO_INTERACTIVE:-${CI:-false}}"
 
 BUILD_FRANKENPHP="${BUILD_FRANKENPHP:-false}"
+BUILD_HTTP3="${BUILD_HTTP3:-}"
 
-CURL_VERSION="8.12.0"
+CURL_VERSION="8.12.1"
 
 # Detect Homebrew prefix (ARM: /opt/homebrew, Intel: /usr/local)
 BREW_PREFIX="${HOMEBREW_PREFIX:-$(brew --prefix 2>/dev/null || echo "/opt/homebrew")}"
@@ -128,13 +129,14 @@ show_banner() {
 }
 
 show_summary_box() {
-    local prefix="$1" debug="$2" extensions="$3" xdebug="$4" set_default="$5" jobs="$6" frankenphp="${7:-${DIM}No${NC}}"
+    local prefix="$1" debug="$2" extensions="$3" xdebug="$4" set_default="$5" jobs="$6" frankenphp="${7:-${DIM}No${NC}}" http3="${8:-${DIM}No${NC}}"
 
     echo ""
     echo -e "  ${BOLD}Build Configuration Summary${NC}"
     echo -e "  ─────────────────────────────────────"
     echo -e "  Install prefix:  ${CYAN}${prefix}${NC}"
     echo -e "  Debug build:     ${debug}"
+    echo -e "  HTTP/3 support:  ${http3}"
     echo -e "  Extensions:      ${extensions}"
     echo -e "  Xdebug:          ${xdebug}"
     echo -e "  FrankenPHP:      ${frankenphp}"
@@ -162,12 +164,14 @@ show_help() {
     echo "  --jobs N             Parallel make jobs (default: $(sysctl -n hw.ncpu 2>/dev/null || echo 4))"
     echo "  --branch NAME        Override php-src branch"
     echo "  --frankenphp         Build FrankenPHP binary (Caddy-based async PHP server, requires Go 1.26+)"
+    echo "  --http3              Build HTTP/3 support (installs ngtcp2, nghttp3 via Homebrew)"
+    echo "  --no-http3           Skip HTTP/3 support (HTTP/1+2 only)"
     echo "  --no-interactive     Skip interactive wizard"
     echo "  --help               Show this help"
     echo ""
     echo "Environment variables:"
     echo "  INSTALL_DIR, SET_DEFAULT, DEBUG_BUILD, EXTENSIONS,"
-    echo "  NO_XDEBUG, BUILD_FRANKENPHP, BUILD_JOBS, PHP_BRANCH, NO_INTERACTIVE, CI"
+    echo "  NO_XDEBUG, BUILD_FRANKENPHP, BUILD_HTTP3, BUILD_JOBS, PHP_BRANCH, NO_INTERACTIVE, CI"
     exit 0
 }
 
@@ -182,6 +186,8 @@ parse_args() {
             --jobs)           BUILD_JOBS="$2"; shift 2 ;;
             --branch)         PHP_BRANCH="$2"; shift 2 ;;
             --frankenphp)     BUILD_FRANKENPHP="true"; shift ;;
+            --http3)          BUILD_HTTP3="true"; shift ;;
+            --no-http3)       BUILD_HTTP3="false"; shift ;;
             --no-interactive) NO_INTERACTIVE="true"; shift ;;
             --help|-h)        show_help ;;
             *) error "Unknown option: $1. Use --help for usage." ;;
@@ -288,7 +294,15 @@ run_wizard() {
            ;;
     esac
 
-    # 2. Debug build
+    # 2. HTTP/3 support
+    echo ""
+    if ask_yesno "Build HTTP/3 support? (installs ngtcp2, nghttp3 via Homebrew)" "n"; then
+        BUILD_HTTP3="true"
+    else
+        BUILD_HTTP3="false"
+    fi
+
+    # 3. Debug build
     echo ""
     if ask_yesno "Enable debug build? (slower, useful for development)" "n"; then
         DEBUG_BUILD="true"
@@ -296,7 +310,7 @@ run_wizard() {
         DEBUG_BUILD="false"
     fi
 
-    # 3. Install prefix
+    # 4. Install prefix
     echo ""
     ask_input "Installation directory" "$INSTALL_DIR" INSTALL_DIR
 
@@ -338,7 +352,10 @@ run_wizard() {
     local frankenphp_label="${DIM}No${NC}"
     [[ "$BUILD_FRANKENPHP" == "true" ]] && frankenphp_label="${GREEN}Yes${NC}"
 
-    show_summary_box "$INSTALL_DIR" "$debug_label" "$EXTENSIONS" "$xdebug_label" "$default_label" "$BUILD_JOBS" "$frankenphp_label"
+    local http3_label="${DIM}No (HTTP/1+2 only)${NC}"
+    [[ "$BUILD_HTTP3" == "true" ]] && http3_label="${GREEN}Yes (ngtcp2 + nghttp3 via Homebrew)${NC}"
+
+    show_summary_box "$INSTALL_DIR" "$debug_label" "$EXTENSIONS" "$xdebug_label" "$default_label" "$BUILD_JOBS" "$frankenphp_label" "$http3_label"
 
     if ! ask_yesno "Proceed with build?" "y"; then
         echo ""
@@ -368,6 +385,8 @@ read_config() {
         XDEBUG_BRANCH=$(sed -n '/"xdebug"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
         FRANKENPHP_REPO=$(sed -n '/"frankenphp"/,/}/p' "$CONFIG_FILE" | grep '"repo"' | head -1 | sed 's/.*"repo"[[:space:]]*:[[:space:]]*"//;s/".*//')
         FRANKENPHP_BRANCH=$(sed -n '/"frankenphp"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | head -1 | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
+        SERVER_REPO=$(sed -n '/"server"/,/}/p' "$CONFIG_FILE" | grep '"repo"' | head -1 | sed 's/.*"repo"[[:space:]]*:[[:space:]]*"//;s/".*//')
+        SERVER_BRANCH=$(sed -n '/"server"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | head -1 | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
     else
         PHP_SRC_REPO=$(jq -r '.php_src.repo' "$CONFIG_FILE")
         PHP_SRC_BRANCH=$(jq -r '.php_src.branch' "$CONFIG_FILE")
@@ -377,6 +396,8 @@ read_config() {
         XDEBUG_BRANCH=$(jq -r '.extensions.xdebug.branch' "$CONFIG_FILE")
         FRANKENPHP_REPO=$(jq -r '.frankenphp.repo' "$CONFIG_FILE")
         FRANKENPHP_BRANCH=$(jq -r '.frankenphp.branch' "$CONFIG_FILE")
+        SERVER_REPO=$(jq -r '.extensions.server.repo' "$CONFIG_FILE")
+        SERVER_BRANCH=$(jq -r '.extensions.server.branch' "$CONFIG_FILE")
     fi
 
     if [[ -n "$PHP_BRANCH" ]]; then PHP_SRC_BRANCH="$PHP_BRANCH"; fi
@@ -451,12 +472,19 @@ install_dependencies() {
         curl
         argon2
         libpq
+        nghttp2
         gettext
     )
 
     info "Installing ${#pkgs[@]} Homebrew packages..."
     run_with_spinner "Installing Homebrew packages" \
         brew install --quiet "${pkgs[@]}"
+
+    if [[ "$BUILD_HTTP3" == "true" ]]; then
+        info "Installing HTTP/3 libraries (ngtcp2, nghttp3)..."
+        run_with_spinner "Installing ngtcp2 + nghttp3" \
+            brew install --quiet ngtcp2 nghttp3
+    fi
 
     # Update BREW_PREFIX after potential Homebrew changes
     BREW_PREFIX="$(brew --prefix)"
@@ -518,6 +546,10 @@ clone_sources() {
         run_with_spinner "Cloning Xdebug" \
             git clone --depth=1 --branch "$XDEBUG_BRANCH" "https://github.com/${XDEBUG_REPO}.git" "${src_dir}/../xdebug"
     fi
+
+    info "Cloning server extension (${SERVER_BRANCH})..."
+    run_with_spinner "Cloning server" \
+        git clone --depth=1 --branch "$SERVER_BRANCH" "https://github.com/${SERVER_REPO}.git" "${src_dir}/../server"
 
     success "Sources cloned"
 }
@@ -724,6 +756,63 @@ build_xdebug() {
     success "Xdebug installed"
 }
 
+build_server() {
+    step "Building true_async_server (HTTP/1+2+3)"
+
+    local server_dir="$1"
+    local php_bin="${INSTALL_DIR}/bin"
+
+    if [[ ! -d "$server_dir" ]]; then
+        warn "Server source not found, skipping"
+        return 0
+    fi
+
+    local nghttp2_prefix
+    nghttp2_prefix="$(brew --prefix nghttp2)"
+
+    run_with_spinner "Running phpize" \
+        bash -c "cd '${server_dir}' && '${php_bin}/phpize'"
+
+    local openssl_prefix
+    openssl_prefix="$(brew --prefix openssl@3)"
+
+    local server_flags=(
+        "--with-php-config='${php_bin}/php-config'"
+        "--enable-http-server"
+        "--enable-http2"
+        "--with-openssl=${openssl_prefix}"
+        "--with-nghttp2=${nghttp2_prefix}"
+    )
+
+    if [[ "$BUILD_HTTP3" == "true" ]]; then
+        local ngtcp2_prefix nghttp3_prefix
+        ngtcp2_prefix="$(brew --prefix ngtcp2)"
+        nghttp3_prefix="$(brew --prefix nghttp3)"
+        server_flags+=(
+            "--enable-http3"
+            "--with-nghttp3=${nghttp3_prefix}"
+            "--with-ngtcp2=${ngtcp2_prefix}"
+        )
+        info "HTTP/3 enabled"
+    else
+        server_flags+=("--disable-http3")
+        info "HTTP/3 disabled"
+    fi
+
+    run_with_spinner "Configuring server extension" \
+        bash -c "cd '${server_dir}' && \
+            PKG_CONFIG_PATH='${openssl_prefix}/lib/pkgconfig:${nghttp2_prefix}/lib/pkgconfig' \
+            ./configure ${server_flags[*]}"
+
+    run_with_spinner "Compiling server extension" \
+        make -C "${server_dir}" -j"$BUILD_JOBS"
+
+    run_with_spinner "Installing server extension" \
+        make -C "${server_dir}" install
+
+    success "true_async_server installed"
+}
+
 ensure_go() {
     if command -v go &>/dev/null; then
         local go_ver
@@ -791,6 +880,10 @@ setup_config() {
 opcache.enable_cli=1
 EOF
     success "Created opcache.ini"
+
+    # server (always enabled)
+    echo "extension=true_async_server" > "${conf_dir}/true_async_server.ini"
+    success "Created true_async_server.ini"
 
     if [[ "$NO_XDEBUG" != "true" ]]; then
         cat > "${conf_dir}/xdebug.ini" << 'EOF'
@@ -964,8 +1057,11 @@ main() {
         fi
     fi
 
+    # Default HTTP3 to false in non-interactive mode if not set
+    [[ -z "$BUILD_HTTP3" ]] && BUILD_HTTP3="false"
+
     # Determine total steps
-    STEP_TOTAL=9
+    STEP_TOTAL=10
     [[ "$NO_XDEBUG" != "true" ]] && STEP_TOTAL=$((STEP_TOTAL + 1))
     [[ "$BUILD_FRANKENPHP" == "true" ]] && STEP_TOTAL=$((STEP_TOTAL + 1))
 
@@ -986,6 +1082,7 @@ main() {
         build_xdebug "${build_dir}/xdebug"
     fi
 
+    build_server "${build_dir}/server"
     build_frankenphp "$build_dir"
 
     setup_config

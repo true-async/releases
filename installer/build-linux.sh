@@ -44,10 +44,15 @@ PHP_BRANCH="${PHP_BRANCH:-}"
 NO_INTERACTIVE="${NO_INTERACTIVE:-${CI:-false}}"
 
 BUILD_FRANKENPHP="${BUILD_FRANKENPHP:-false}"
+BUILD_HTTP3="${BUILD_HTTP3:-}"
 GO_VERSION="1.26.0"
 
 LIBUV_VERSION="1.52.1"
-CURL_VERSION="8.12.0"
+OPENSSL_VERSION="3.5.0"
+NGHTTP2_VERSION="1.59.0"
+NGHTTP3_VERSION="1.15.0"
+NGTCP2_VERSION="1.22.1"
+CURL_VERSION="8.12.1"
 BUILD_LATEST_CURL="${BUILD_LATEST_CURL:-true}"
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -128,7 +133,7 @@ show_banner() {
 }
 
 show_summary_box() {
-    local prefix="$1" debug="$2" extensions="$3" xdebug="$4" set_default="$5" jobs="$6" frankenphp="${7:-${DIM}No${NC}}"
+    local prefix="$1" debug="$2" extensions="$3" xdebug="$4" set_default="$5" jobs="$6" frankenphp="${7:-${DIM}No${NC}}" http3="${8:-${DIM}No${NC}}"
 
     local curl_label="${GREEN}Yes (${CURL_VERSION})${NC}"
     [[ "$BUILD_LATEST_CURL" != "true" ]] && curl_label="${YELLOW}No (system version)${NC}"
@@ -139,6 +144,7 @@ show_summary_box() {
     echo -e "  Install prefix:  ${CYAN}${prefix}${NC}"
     echo -e "  Debug build:     ${debug}"
     echo -e "  Latest libcurl:  ${curl_label}"
+    echo -e "  HTTP/3 support:  ${http3}"
     echo -e "  Extensions:      ${extensions}"
     echo -e "  Xdebug:          ${xdebug}"
     echo -e "  FrankenPHP:      ${frankenphp}"
@@ -165,13 +171,15 @@ show_help() {
     echo "  --jobs N             Parallel make jobs (default: $(nproc 2>/dev/null || echo 4))"
     echo "  --branch NAME        Override php-src branch"
     echo "  --frankenphp         Build FrankenPHP binary (Caddy-based async PHP server, requires Go 1.26+)"
+    echo "  --http3              Build HTTP/3 support (OpenSSL 3.5+, nghttp3, ngtcp2)"
+    echo "  --no-http3           Skip HTTP/3 support (HTTP/1+2 only)"
     echo "  --no-latest-curl     Skip building latest libcurl (async uploads will be synchronous)"
     echo "  --no-interactive     Skip interactive wizard"
     echo "  --help               Show this help"
     echo ""
     echo "Environment variables:"
     echo "  INSTALL_DIR, SET_DEFAULT, DEBUG_BUILD, EXTENSIONS,"
-    echo "  NO_XDEBUG, BUILD_FRANKENPHP, BUILD_JOBS, BUILD_LATEST_CURL, PHP_BRANCH, NO_INTERACTIVE, CI"
+    echo "  NO_XDEBUG, BUILD_FRANKENPHP, BUILD_HTTP3, BUILD_JOBS, BUILD_LATEST_CURL, PHP_BRANCH, NO_INTERACTIVE, CI"
     exit 0
 }
 
@@ -186,6 +194,8 @@ parse_args() {
             --jobs)           BUILD_JOBS="$2"; shift 2 ;;
             --branch)         PHP_BRANCH="$2"; shift 2 ;;
             --frankenphp)     BUILD_FRANKENPHP="true"; shift ;;
+            --http3)          BUILD_HTTP3="true"; shift ;;
+            --no-http3)       BUILD_HTTP3="false"; shift ;;
             --no-latest-curl) BUILD_LATEST_CURL="false"; shift ;;
             --no-interactive) NO_INTERACTIVE="true"; shift ;;
             --help|-h)        show_help ;;
@@ -301,7 +311,15 @@ run_wizard() {
         DEBUG_BUILD="false"
     fi
 
-    # 3. Build latest libcurl
+    # 3. HTTP/3 support
+    echo ""
+    if ask_yesno "Build HTTP/3 support? (OpenSSL ${OPENSSL_VERSION}, nghttp3 ${NGHTTP3_VERSION}, ngtcp2 ${NGTCP2_VERSION} — adds ~10 min to build)" "n"; then
+        BUILD_HTTP3="true"
+    else
+        BUILD_HTTP3="false"
+    fi
+
+    # 4. Build latest libcurl
     echo ""
     if ask_yesno "Build latest libcurl ${CURL_VERSION}? (required for fully async file uploads)" "y"; then
         BUILD_LATEST_CURL="true"
@@ -309,7 +327,7 @@ run_wizard() {
         BUILD_LATEST_CURL="false"
     fi
 
-    # 4. Install prefix
+    # 5. Install prefix
     echo ""
     ask_input "Installation directory" "$INSTALL_DIR" INSTALL_DIR
 
@@ -330,7 +348,7 @@ run_wizard() {
         esac
     fi
 
-    # 6. PATH
+    # PATH
     echo ""
     if ask_yesno "Add to PATH as default php?" "n"; then
         SET_DEFAULT="true"
@@ -351,7 +369,10 @@ run_wizard() {
     local frankenphp_label="${DIM}No${NC}"
     [[ "$BUILD_FRANKENPHP" == "true" ]] && frankenphp_label="${GREEN}Yes${NC}"
 
-    show_summary_box "$INSTALL_DIR" "$debug_label" "$EXTENSIONS" "$xdebug_label" "$default_label" "$BUILD_JOBS" "$frankenphp_label"
+    local http3_label="${DIM}No (HTTP/1+2 only)${NC}"
+    [[ "$BUILD_HTTP3" == "true" ]] && http3_label="${GREEN}Yes (OpenSSL ${OPENSSL_VERSION} + nghttp3 + ngtcp2)${NC}"
+
+    show_summary_box "$INSTALL_DIR" "$debug_label" "$EXTENSIONS" "$xdebug_label" "$default_label" "$BUILD_JOBS" "$frankenphp_label" "$http3_label"
 
     if ! ask_yesno "Proceed with build?" "y"; then
         echo ""
@@ -388,6 +409,8 @@ read_config() {
         XDEBUG_BRANCH=$(sed -n '/"xdebug"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
         FRANKENPHP_REPO=$(sed -n '/"frankenphp"/,/}/p' "$CONFIG_FILE" | grep '"repo"' | head -1 | sed 's/.*"repo"[[:space:]]*:[[:space:]]*"//;s/".*//')
         FRANKENPHP_BRANCH=$(sed -n '/"frankenphp"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | head -1 | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
+        SERVER_REPO=$(sed -n '/"server"/,/}/p' "$CONFIG_FILE" | grep '"repo"' | head -1 | sed 's/.*"repo"[[:space:]]*:[[:space:]]*"//;s/".*//')
+        SERVER_BRANCH=$(sed -n '/"server"/,/}/p' "$CONFIG_FILE" | grep '"branch"' | head -1 | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//;s/".*//')
     else
         PHP_SRC_REPO=$(jq -r '.php_src.repo' "$CONFIG_FILE")
         PHP_SRC_BRANCH=$(jq -r '.php_src.branch' "$CONFIG_FILE")
@@ -397,6 +420,8 @@ read_config() {
         XDEBUG_BRANCH=$(jq -r '.extensions.xdebug.branch' "$CONFIG_FILE")
         FRANKENPHP_REPO=$(jq -r '.frankenphp.repo' "$CONFIG_FILE")
         FRANKENPHP_BRANCH=$(jq -r '.frankenphp.branch' "$CONFIG_FILE")
+        SERVER_REPO=$(jq -r '.extensions.server.repo' "$CONFIG_FILE")
+        SERVER_BRANCH=$(jq -r '.extensions.server.branch' "$CONFIG_FILE")
     fi
 
     # Override branch if specified
@@ -436,22 +461,22 @@ install_dependencies() {
     step "Installing build dependencies"
 
     local pkgs=(
-        autoconf automake bison re2c pkg-config dos2unix
+        autoconf automake bison re2c pkg-config dos2unix perl
         gcc g++ make cmake ninja-build
         git curl wget
-        # Core
-        libxml2-dev libssl-dev libsqlite3-dev libargon2-dev
+        # Core (no libssl-dev — we build OpenSSL from source)
+        libxml2-dev libsqlite3-dev libargon2-dev
         # Extensions
         libedit-dev libreadline-dev libonig-dev
         libsodium-dev libzip-dev zlib1g-dev
         libbz2-dev libgmp-dev libicu-dev
-        libxslt1-dev libpsl-dev
+        libxslt1-dev
         # Image
         libpng-dev libjpeg-dev libwebp-dev libfreetype6-dev
         # Database
         libpq-dev libmysqlclient-dev
         # Extra
-        libcurl4-openssl-dev libldap2-dev libsasl2-dev
+        libldap2-dev libsasl2-dev
         libtidy-dev libenchant-2-dev libffi-dev
         libsnmp-dev libgdbm-dev liblmdb-dev
     )
@@ -461,6 +486,103 @@ install_dependencies() {
 
     run_with_spinner "Updating package lists" $sudo_cmd apt-get update -qq
     run_with_spinner "Installing ${#pkgs[@]} packages" $sudo_cmd apt-get install -y -qq --no-install-recommends "${pkgs[@]}"
+}
+
+build_openssl() {
+    step "Building OpenSSL ${OPENSSL_VERSION}"
+
+    local build_dir="$1"
+
+    # Check if we already have a suitable version in /usr/local
+    if pkg-config --exists openssl 2>/dev/null; then
+        local sys_ver
+        sys_ver=$(pkg-config --modversion openssl 2>/dev/null)
+        local major minor
+        IFS='.' read -r major minor _ <<< "$sys_ver"
+        if (( major > 3 || (major == 3 && minor >= 5) )); then
+            success "OpenSSL ${sys_ver} >= 3.5 found, skipping build"
+            return 0
+        fi
+        info "OpenSSL ${sys_ver} < 3.5 — building ${OPENSSL_VERSION} for HTTP/3 QUIC API"
+    else
+        info "Building OpenSSL ${OPENSSL_VERSION}..."
+    fi
+
+    local sudo_cmd=""
+    [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
+
+    wget -q "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz" \
+        -O "${build_dir}/openssl.tar.gz"
+    tar -xf "${build_dir}/openssl.tar.gz" -C "$build_dir"
+
+    local ossl_dir="${build_dir}/openssl-${OPENSSL_VERSION}"
+
+    run_with_spinner "Configuring OpenSSL" \
+        bash -c "cd '${ossl_dir}' && ./Configure --prefix=/usr/local --libdir=lib --openssldir=/etc/ssl enable-tls1_3 shared"
+    run_with_spinner "Compiling OpenSSL" \
+        make -C "${ossl_dir}" -j"$BUILD_JOBS"
+    run_with_spinner "Installing OpenSSL" \
+        $sudo_cmd make -C "${ossl_dir}" install_sw
+    $sudo_cmd ldconfig
+
+    success "OpenSSL ${OPENSSL_VERSION} installed"
+}
+
+build_nghttp2() {
+    step "Building nghttp2 ${NGHTTP2_VERSION}"
+
+    local build_dir="$1"
+    local sudo_cmd=""
+    [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
+
+    run_with_spinner "Cloning nghttp2" \
+        git clone --depth=1 --branch "v${NGHTTP2_VERSION}" https://github.com/nghttp2/nghttp2.git "${build_dir}/nghttp2"
+
+    run_with_spinner "Configuring nghttp2" \
+        bash -c "cd '${build_dir}/nghttp2' && autoreconf -i && ./configure --prefix=/usr/local --enable-lib-only"
+    run_with_spinner "Compiling nghttp2" \
+        make -C "${build_dir}/nghttp2" -j"$BUILD_JOBS"
+    run_with_spinner "Installing nghttp2" \
+        $sudo_cmd make -C "${build_dir}/nghttp2" install
+    $sudo_cmd ldconfig
+
+    success "nghttp2 ${NGHTTP2_VERSION} installed"
+}
+
+build_nghttp3() {
+    step "Building nghttp3 ${NGHTTP3_VERSION} + ngtcp2 ${NGTCP2_VERSION}"
+
+    local build_dir="$1"
+    local sudo_cmd=""
+    [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
+
+    run_with_spinner "Cloning nghttp3" \
+        git clone --depth=1 --branch "v${NGHTTP3_VERSION}" --recurse-submodules \
+            https://github.com/ngtcp2/nghttp3.git "${build_dir}/nghttp3"
+
+    run_with_spinner "Configuring nghttp3" \
+        bash -c "cd '${build_dir}/nghttp3' && autoreconf -i && ./configure --prefix=/usr/local --enable-lib-only"
+    run_with_spinner "Compiling nghttp3" \
+        make -C "${build_dir}/nghttp3" -j"$BUILD_JOBS"
+    run_with_spinner "Installing nghttp3" \
+        $sudo_cmd make -C "${build_dir}/nghttp3" install
+    $sudo_cmd ldconfig
+
+    run_with_spinner "Cloning ngtcp2" \
+        git clone --depth=1 --branch "v${NGTCP2_VERSION}" --recurse-submodules \
+            https://github.com/ngtcp2/ngtcp2.git "${build_dir}/ngtcp2"
+
+    run_with_spinner "Configuring ngtcp2" \
+        bash -c "cd '${build_dir}/ngtcp2' && autoreconf -i && \
+            PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
+            ./configure --prefix=/usr/local --with-openssl --enable-lib-only"
+    run_with_spinner "Compiling ngtcp2" \
+        bash -c "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig make -C '${build_dir}/ngtcp2' -j${BUILD_JOBS}"
+    run_with_spinner "Installing ngtcp2" \
+        $sudo_cmd make -C "${build_dir}/ngtcp2" install
+    $sudo_cmd ldconfig
+
+    success "nghttp3 ${NGHTTP3_VERSION} and ngtcp2 ${NGTCP2_VERSION} installed"
 }
 
 build_libuv() {
@@ -540,13 +662,17 @@ build_libcurl() {
 
     local curl_dir="${build_dir}/curl-${CURL_VERSION}"
 
-    run_with_spinner "Configuring libcurl" \
-        bash -c "cd '${curl_dir}' && ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static --quiet"
-    run_with_spinner "Compiling libcurl" \
-        make -C "${curl_dir}" -j"$BUILD_JOBS" --quiet
-
     local sudo_cmd=""
     [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
+
+    run_with_spinner "Configuring libcurl" \
+        bash -c "cd '${curl_dir}' && \
+            PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
+            ./configure --prefix=/usr/local \
+                --with-openssl --with-nghttp2=/usr/local \
+                --enable-shared --disable-static --without-libpsl --quiet"
+    run_with_spinner "Compiling libcurl" \
+        bash -c "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig make -C '${curl_dir}' -j${BUILD_JOBS} --quiet"
     run_with_spinner "Installing libcurl" \
         $sudo_cmd make -C "${curl_dir}" install --quiet
     $sudo_cmd ldconfig
@@ -572,6 +698,10 @@ clone_sources() {
         run_with_spinner "Cloning Xdebug" \
             git clone --depth=1 --branch "$XDEBUG_BRANCH" "https://github.com/${XDEBUG_REPO}.git" "${src_dir}/../xdebug"
     fi
+
+    info "Cloning server extension (${SERVER_BRANCH})..."
+    run_with_spinner "Cloning server" \
+        git clone --depth=1 --branch "$SERVER_BRANCH" "https://github.com/${SERVER_REPO}.git" "${src_dir}/../server"
 
     # Fix line endings
     if command -v dos2unix &>/dev/null; then
@@ -657,7 +787,7 @@ configure_php() {
     dimtext "${flags[*]}"
 
     run_with_spinner "Running configure" \
-        bash -c "cd '${src_dir}' && ./configure ${flags[*]}"
+        bash -c "cd '${src_dir}' && PKG_CONFIG_PATH=/usr/local/lib/pkgconfig ./configure ${flags[*]}"
 
     success "Configuration complete"
 }
@@ -713,6 +843,54 @@ build_xdebug() {
         make -C "${xdebug_dir}" install
 
     success "Xdebug installed"
+}
+
+build_server() {
+    step "Building true_async_server (HTTP/1+2+3)"
+
+    local server_dir="$1"
+    local php_bin="${INSTALL_DIR}/bin"
+
+    if [[ ! -d "$server_dir" ]]; then
+        warn "Server source not found, skipping"
+        return 0
+    fi
+
+    run_with_spinner "Running phpize" \
+        bash -c "cd '${server_dir}' && '${php_bin}/phpize'"
+
+    local server_flags=(
+        "--with-php-config='${php_bin}/php-config'"
+        "--enable-http-server"
+        "--enable-http2"
+        "--with-openssl"
+        "--with-nghttp2=/usr/local"
+    )
+
+    if [[ "$BUILD_HTTP3" == "true" ]]; then
+        server_flags+=(
+            "--enable-http3"
+            "--with-nghttp3=/usr/local"
+            "--with-ngtcp2=/usr/local"
+        )
+        info "HTTP/3 enabled"
+    else
+        server_flags+=("--disable-http3")
+        info "HTTP/3 disabled"
+    fi
+
+    run_with_spinner "Configuring server extension" \
+        bash -c "cd '${server_dir}' && \
+            PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
+            ./configure ${server_flags[*]}"
+
+    run_with_spinner "Compiling server extension" \
+        make -C "${server_dir}" -j"$BUILD_JOBS"
+
+    run_with_spinner "Installing server extension" \
+        make -C "${server_dir}" install
+
+    success "true_async_server installed"
 }
 
 ensure_go() {
@@ -799,6 +977,10 @@ setup_config() {
 opcache.enable_cli=1
 EOF
     success "Created opcache.ini"
+
+    # server (always enabled)
+    echo "extension=true_async_server" > "${conf_dir}/true_async_server.ini"
+    success "Created true_async_server.ini"
 
     # xdebug
     if [[ "$NO_XDEBUG" != "true" ]]; then
@@ -976,8 +1158,13 @@ main() {
         fi
     fi
 
-    # Determine total steps
-    STEP_TOTAL=10
+    # Default HTTP3 to false in non-interactive mode if not set
+    [[ -z "$BUILD_HTTP3" ]] && BUILD_HTTP3="false"
+
+    # Determine total steps: base + openssl + nghttp2 + libcurl + server = +4 always
+    # + nghttp3/ngtcp2 if HTTP3; + xdebug if enabled; + frankenphp if enabled
+    STEP_TOTAL=14
+    [[ "$BUILD_HTTP3" == "true" ]] && STEP_TOTAL=$((STEP_TOTAL + 1))
     [[ "$NO_XDEBUG" != "true" ]] && STEP_TOTAL=$((STEP_TOTAL + 1))
     [[ "$BUILD_FRANKENPHP" == "true" ]] && STEP_TOTAL=$((STEP_TOTAL + 1))
 
@@ -992,6 +1179,9 @@ main() {
 
     # Execute build steps
     install_dependencies
+    build_openssl "$build_dir"
+    build_nghttp2 "$build_dir"
+    [[ "$BUILD_HTTP3" == "true" ]] && build_nghttp3 "$build_dir"
     build_libuv "$build_dir"
     build_libcurl "$build_dir"
     clone_sources "$src_dir"
@@ -1003,6 +1193,7 @@ main() {
         build_xdebug "${build_dir}/xdebug"
     fi
 
+    build_server "${build_dir}/server"
     build_frankenphp "$build_dir"
 
     setup_config
