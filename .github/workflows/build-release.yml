@@ -405,18 +405,6 @@ jobs:
           ref: ${{ needs.config.outputs.server_branch }}
           path: server
 
-      - name: Patch server config.w32 (drop in-tree PHP_INSTALL_HEADERS)
-        shell: pwsh
-        run: |
-          # config.w32 calls PHP_INSTALL_HEADERS("ext/http_server/include", ...)
-          # which only works for in-tree extension builds. We build standalone
-          # via phpize, where this path doesn't exist. Header install isn't
-          # needed for the .dll artifact, so strip the line.
-          $cw32 = "$env:GITHUB_WORKSPACE\server\config.w32"
-          (Get-Content $cw32) |
-            Where-Object { $_ -notmatch 'PHP_INSTALL_HEADERS\("ext/http_server' } |
-            Set-Content $cw32
-
       - name: Create server build task script
         shell: pwsh
         run: |
@@ -460,13 +448,13 @@ jobs:
           Write-Host "=== DLLs in server build output ==="
           Get-ChildItem -Path $serverDir -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue |
             Select-Object Name | Sort-Object Name | Format-Table -AutoSize
-          $dll = Get-ChildItem -Path $serverDir -Recurse -Filter "php_http_server.dll" -ErrorAction SilentlyContinue |
+          $dll = Get-ChildItem -Path $serverDir -Recurse -Filter "php_true_async_server.dll" -ErrorAction SilentlyContinue |
                  Select-Object -First 1
           if (-not $dll) {
-            Write-Error "php_http_server.dll NOT found under $serverDir - server build failed"
+            Write-Error "php_true_async_server.dll NOT found under $serverDir - server build failed"
             exit 1
           }
-          Write-Host "SUCCESS: php_http_server.dll found at $($dll.FullName)"
+          Write-Host "SUCCESS: php_true_async_server.dll found at $($dll.FullName)"
 
       # ── FrankenPHP ────────────────────────────────────────────────────────
       - name: Checkout frankenphp
@@ -674,14 +662,14 @@ jobs:
 
           # ── Server extension ──────────────────────────────────────────────────
           $serverDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\server" -Recurse `
-                         -Filter "php_http_server.dll" -ErrorAction SilentlyContinue |
+                         -Filter "php_true_async_server.dll" -ErrorAction SilentlyContinue |
                        Select-Object -First 1
           if (-not $serverDll) {
-            Write-Error "php_http_server.dll not found after server build"
+            Write-Error "php_true_async_server.dll not found after server build"
             exit 1
           }
-          Copy-Item $serverDll.FullName -Destination "$stageDir\ext\php_http_server.dll" -Force
-          Write-Host "Added server: $($serverDll.FullName) -> ext\php_http_server.dll"
+          Copy-Item $serverDll.FullName -Destination "$stageDir\ext\php_true_async_server.dll" -Force
+          Write-Host "Added server: $($serverDll.FullName) -> ext\php_true_async_server.dll"
 
           # ── php.ini (from development template + extensions + xdebug) ───────────
           $iniPath = Join-Path $stageDir "php.ini"
@@ -707,7 +695,7 @@ jobs:
             "extension=pdo_sqlite",
             "",
             "; TrueAsync HTTP server (HTTP/1+2)",
-            "extension=php_http_server.dll",
+            "extension=php_true_async_server.dll",
             "",
             "; Xdebug (loaded with mode=off - enable via xdebug.mode=debug etc.)",
             "zend_extension = php_xdebug.dll",
