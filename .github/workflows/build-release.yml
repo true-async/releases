@@ -265,7 +265,7 @@ jobs:
           }
 
           New-Item -ItemType Directory -Force -Path C:\vcpkg-cache | Out-Null
-          C:\vcpkg\vcpkg.exe install libuv:x64-windows-static-md nghttp2:x64-windows-static-md
+          C:\vcpkg\vcpkg.exe install libuv:x64-windows-static-md
 
       - name: Setup PHP SDK
         shell: cmd
@@ -304,11 +304,6 @@ jobs:
           copy "C:\vcpkg\installed\x64-windows-static-md\include\uv.h" "%DEPS_DIR%\include\libuv\uv.h"
           xcopy /E /I /H /Y "C:\vcpkg\installed\x64-windows-static-md\include\uv" "%DEPS_DIR%\include\libuv\uv\"
           copy "C:\vcpkg\installed\x64-windows-static-md\lib\libuv.lib" "%DEPS_DIR%\lib\libuv.lib"
-
-          REM Copy nghttp2 from vcpkg to deps directory (needed by server extension)
-          if not exist "%DEPS_DIR%\include\nghttp2" mkdir "%DEPS_DIR%\include\nghttp2"
-          xcopy /E /I /H /Y "C:\vcpkg\installed\x64-windows-static-md\include\nghttp2" "%DEPS_DIR%\include\nghttp2\"
-          copy "C:\vcpkg\installed\x64-windows-static-md\lib\nghttp2.lib" "%DEPS_DIR%\lib\nghttp2.lib"
 
       - name: Create build task script
         shell: pwsh
@@ -434,7 +429,6 @@ jobs:
             "if %errorlevel% neq 0 exit /b 3",
             "call configure.bat --with-php-build=%DEPS_DIR% --enable-http-server --enable-http2",
             "if %errorlevel% neq 0 exit /b 3",
-            "set CL=/D NGHTTP2_STATICLIB %CL%",
             "nmake /NOLOGO",
             "if %errorlevel% neq 0 exit /b 3",
             "exit /b 0"
