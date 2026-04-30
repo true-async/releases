@@ -461,7 +461,7 @@ install_dependencies() {
     step "Installing build dependencies"
 
     local pkgs=(
-        autoconf automake libtool m4 bison re2c pkg-config dos2unix perl
+        autoconf automake bison re2c pkg-config dos2unix perl
         gcc g++ make cmake ninja-build
         git curl wget
         # Core (no libssl-dev — we build OpenSSL from source)
@@ -535,11 +535,11 @@ build_nghttp2() {
     local sudo_cmd=""
     [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
 
-    run_with_spinner "Cloning nghttp2" \
-        git clone --depth=1 --branch "v${NGHTTP2_VERSION}" https://github.com/nghttp2/nghttp2.git "${build_dir}/nghttp2"
+    run_with_spinner "Downloading nghttp2" \
+        bash -c "wget -q 'https://github.com/nghttp2/nghttp2/releases/download/v${NGHTTP2_VERSION}/nghttp2-${NGHTTP2_VERSION}.tar.gz' -O '${build_dir}/nghttp2.tar.gz' && tar -xf '${build_dir}/nghttp2.tar.gz' -C '${build_dir}' && mv '${build_dir}/nghttp2-${NGHTTP2_VERSION}' '${build_dir}/nghttp2'"
 
     run_with_spinner "Configuring nghttp2" \
-        bash -c "cd '${build_dir}/nghttp2' && autoreconf -i && ./configure --prefix=/usr/local --enable-lib-only"
+        bash -c "cd '${build_dir}/nghttp2' && ./configure --prefix=/usr/local --enable-lib-only"
     run_with_spinner "Compiling nghttp2" \
         make -C "${build_dir}/nghttp2" -j"$BUILD_JOBS"
     run_with_spinner "Installing nghttp2" \
@@ -556,24 +556,22 @@ build_nghttp3() {
     local sudo_cmd=""
     [[ $EUID -ne 0 ]] && sudo_cmd="sudo"
 
-    run_with_spinner "Cloning nghttp3" \
-        git clone --depth=1 --branch "v${NGHTTP3_VERSION}" --recurse-submodules \
-            https://github.com/ngtcp2/nghttp3.git "${build_dir}/nghttp3"
+    run_with_spinner "Downloading nghttp3" \
+        bash -c "wget -q 'https://github.com/ngtcp2/nghttp3/releases/download/v${NGHTTP3_VERSION}/nghttp3-${NGHTTP3_VERSION}.tar.gz' -O '${build_dir}/nghttp3.tar.gz' && tar -xf '${build_dir}/nghttp3.tar.gz' -C '${build_dir}' && mv '${build_dir}/nghttp3-${NGHTTP3_VERSION}' '${build_dir}/nghttp3'"
 
     run_with_spinner "Configuring nghttp3" \
-        bash -c "cd '${build_dir}/nghttp3' && autoreconf -i && ./configure --prefix=/usr/local --enable-lib-only"
+        bash -c "cd '${build_dir}/nghttp3' && ./configure --prefix=/usr/local --enable-lib-only"
     run_with_spinner "Compiling nghttp3" \
         make -C "${build_dir}/nghttp3" -j"$BUILD_JOBS"
     run_with_spinner "Installing nghttp3" \
         $sudo_cmd make -C "${build_dir}/nghttp3" install
     $sudo_cmd ldconfig
 
-    run_with_spinner "Cloning ngtcp2" \
-        git clone --depth=1 --branch "v${NGTCP2_VERSION}" --recurse-submodules \
-            https://github.com/ngtcp2/ngtcp2.git "${build_dir}/ngtcp2"
+    run_with_spinner "Downloading ngtcp2" \
+        bash -c "wget -q 'https://github.com/ngtcp2/ngtcp2/releases/download/v${NGTCP2_VERSION}/ngtcp2-${NGTCP2_VERSION}.tar.gz' -O '${build_dir}/ngtcp2.tar.gz' && tar -xf '${build_dir}/ngtcp2.tar.gz' -C '${build_dir}' && mv '${build_dir}/ngtcp2-${NGTCP2_VERSION}' '${build_dir}/ngtcp2'"
 
     run_with_spinner "Configuring ngtcp2" \
-        bash -c "cd '${build_dir}/ngtcp2' && autoreconf -i && \
+        bash -c "cd '${build_dir}/ngtcp2' && \
             PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
             ./configure --prefix=/usr/local --with-openssl --enable-lib-only"
     run_with_spinner "Compiling ngtcp2" \

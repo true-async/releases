@@ -18,7 +18,7 @@ ARG SERVER_BRANCH=main
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    autoconf automake libtool m4 bison build-essential curl re2c git \
+    autoconf automake bison build-essential curl re2c git \
     cmake ninja-build wget dos2unix pkg-config perl \
     libxml2-dev libargon2-dev \
     libedit-dev libreadline-dev \
@@ -45,29 +45,26 @@ RUN wget -q https://github.com/libuv/libuv/archive/v1.52.1.tar.gz \
     && cd / && rm -rf libuv*
 
 # nghttp2 1.59.0
-RUN git clone --depth 1 --branch v1.59.0 https://github.com/nghttp2/nghttp2.git \
-    && cd nghttp2 \
-    && autoreconf -i \
+RUN wget -q https://github.com/nghttp2/nghttp2/releases/download/v1.59.0/nghttp2-1.59.0.tar.gz \
+    && tar -xf nghttp2-1.59.0.tar.gz && cd nghttp2-1.59.0 \
     && ./configure --prefix=/usr/local --enable-lib-only \
     && make -j"$(nproc)" && make install && ldconfig \
-    && cd / && rm -rf nghttp2
+    && cd / && rm -rf nghttp2*
 
 # nghttp3 1.15.0
-RUN git clone --depth 1 --branch v1.15.0 --recurse-submodules https://github.com/ngtcp2/nghttp3.git \
-    && cd nghttp3 \
-    && autoreconf -i \
+RUN wget -q https://github.com/ngtcp2/nghttp3/releases/download/v1.15.0/nghttp3-1.15.0.tar.gz \
+    && tar -xf nghttp3-1.15.0.tar.gz && cd nghttp3-1.15.0 \
     && ./configure --prefix=/usr/local --enable-lib-only \
     && make -j"$(nproc)" && make install && ldconfig \
-    && cd / && rm -rf nghttp3
+    && cd / && rm -rf nghttp3*
 
 # ngtcp2 1.22.1
-RUN git clone --depth 1 --branch v1.22.1 --recurse-submodules https://github.com/ngtcp2/ngtcp2.git \
-    && cd ngtcp2 \
-    && autoreconf -i \
+RUN wget -q https://github.com/ngtcp2/ngtcp2/releases/download/v1.22.1/ngtcp2-1.22.1.tar.gz \
+    && tar -xf ngtcp2-1.22.1.tar.gz && cd ngtcp2-1.22.1 \
     && PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
        ./configure --prefix=/usr/local --with-openssl --enable-lib-only \
     && PKG_CONFIG_PATH=/usr/local/lib/pkgconfig make -j"$(nproc)" && make install && ldconfig \
-    && cd / && rm -rf ngtcp2
+    && cd / && rm -rf ngtcp2*
 
 # libcurl 8.12.1
 RUN wget -q https://github.com/curl/curl/releases/download/curl-8_12_1/curl-8.12.1.tar.gz \
