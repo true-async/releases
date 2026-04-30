@@ -461,7 +461,7 @@ install_dependencies() {
     step "Installing build dependencies"
 
     local pkgs=(
-        autoconf automake bison re2c pkg-config dos2unix perl
+        autoconf automake libtool m4 bison re2c pkg-config dos2unix perl
         gcc g++ make cmake ninja-build
         git curl wget
         # Core (no libssl-dev — we build OpenSSL from source)

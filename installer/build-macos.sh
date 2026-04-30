@@ -437,6 +437,8 @@ install_dependencies() {
     local pkgs=(
         autoconf
         automake
+        libtool
+        m4
         bison
         re2c
         pkg-config
