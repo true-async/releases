@@ -19,7 +19,7 @@ ARG DEBUG=false
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    autoconf automake bison build-essential curl re2c git \
+    autoconf automake libtool m4 bison build-essential curl re2c git \
     cmake ninja-build wget dos2unix pkg-config perl \
     libxml2-dev libargon2-dev \
     libedit-dev libreadline-dev \
