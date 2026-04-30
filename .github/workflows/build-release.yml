@@ -30,6 +30,8 @@ jobs:
       xdebug_branch: ${{ steps.read.outputs.xdebug_branch }}
       frankenphp_repo: ${{ steps.read.outputs.frankenphp_repo }}
       frankenphp_branch: ${{ steps.read.outputs.frankenphp_branch }}
+      server_repo: ${{ steps.read.outputs.server_repo }}
+      server_branch: ${{ steps.read.outputs.server_branch }}
       version: ${{ steps.read.outputs.version }}
       php_version: ${{ steps.read.outputs.php_version }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
@@ -47,6 +49,8 @@ jobs:
           echo "xdebug_branch=$(jq -r '.extensions.xdebug.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "frankenphp_repo=$(jq -r '.frankenphp.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "frankenphp_branch=$(jq -r '.frankenphp.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "server_repo=$(jq -r '.extensions.server.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "server_branch=$(jq -r '.extensions.server.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
@@ -261,7 +265,7 @@ jobs:
           }
 
           New-Item -ItemType Directory -Force -Path C:\vcpkg-cache | Out-Null
-          C:\vcpkg\vcpkg.exe install libuv:x64-windows-static-md
+          C:\vcpkg\vcpkg.exe install libuv:x64-windows-static-md nghttp2:x64-windows-static-md
 
       - name: Setup PHP SDK
         shell: cmd
@@ -300,6 +304,11 @@ jobs:
           copy "C:\vcpkg\installed\x64-windows-static-md\include\uv.h" "%DEPS_DIR%\include\libuv\uv.h"
           xcopy /E /I /H /Y "C:\vcpkg\installed\x64-windows-static-md\include\uv" "%DEPS_DIR%\include\libuv\uv\"
           copy "C:\vcpkg\installed\x64-windows-static-md\lib\libuv.lib" "%DEPS_DIR%\lib\libuv.lib"
+
+          REM Copy nghttp2 from vcpkg to deps directory (needed by server extension)
+          if not exist "%DEPS_DIR%\include\nghttp2" mkdir "%DEPS_DIR%\include\nghttp2"
+          xcopy /E /I /H /Y "C:\vcpkg\installed\x64-windows-static-md\include\nghttp2" "%DEPS_DIR%\include\nghttp2\"
+          copy "C:\vcpkg\installed\x64-windows-static-md\lib\nghttp2.lib" "%DEPS_DIR%\lib\nghttp2.lib"
 
       - name: Create build task script
         shell: pwsh
@@ -392,6 +401,66 @@ jobs:
             exit 1
           }
           Write-Host "SUCCESS: php_xdebug.dll found at $($dll.FullName)"
+
+      # ── Server extension ──────────────────────────────────────────────────
+      - name: Checkout server
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.server_repo }}
+          ref: ${{ needs.config.outputs.server_branch }}
+          path: server
+
+      - name: Create server build task script
+        shell: pwsh
+        run: |
+          $objDir = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
+          $develDir = Get-ChildItem -Path $objDir -Directory -Filter "*-devel-*" -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+          if (-not $develDir) {
+            Write-Error "Devel directory not found in $objDir"
+            exit 1
+          }
+          $phpize = Join-Path $develDir.FullName "phpize.bat"
+          if (!(Test-Path $phpize)) {
+            Write-Error "phpize.bat not found in $($develDir.FullName)"
+            exit 1
+          }
+          Write-Host "Using phpize: $phpize"
+          @(
+            "@echo off",
+            "cd /d $($env:GITHUB_WORKSPACE)\server",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call `"$phpize`"",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call configure.bat --with-php-build=%DEPS_DIR% --enable-http-server --enable-http2",
+            "if %errorlevel% neq 0 exit /b 3",
+            "set CL=/D NGHTTP2_STATICLIB %CL%",
+            "nmake /NOLOGO",
+            "if %errorlevel% neq 0 exit /b 3",
+            "exit /b 0"
+          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_server.bat" -Encoding ASCII
+
+      - name: Build server
+        shell: cmd
+        run: |
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_server.bat
+          if %errorlevel% neq 0 exit /b %errorlevel%
+
+      - name: Verify server build
+        shell: pwsh
+        run: |
+          $serverDir = "$env:GITHUB_WORKSPACE\server"
+          Write-Host "=== DLLs in server build output ==="
+          Get-ChildItem -Path $serverDir -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue |
+            Select-Object Name | Sort-Object Name | Format-Table -AutoSize
+          $dll = Get-ChildItem -Path $serverDir -Recurse -Filter "php_http_server.dll" -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+          if (-not $dll) {
+            Write-Error "php_http_server.dll NOT found under $serverDir - server build failed"
+            exit 1
+          }
+          Write-Host "SUCCESS: php_http_server.dll found at $($dll.FullName)"
 
       # ── FrankenPHP ────────────────────────────────────────────────────────
       - name: Checkout frankenphp
@@ -597,6 +666,17 @@ jobs:
           Copy-Item $xdebugDll.FullName -Destination "$stageDir\ext\php_xdebug.dll" -Force
           Write-Host "Added xdebug: $($xdebugDll.FullName) -> ext\php_xdebug.dll"
 
+          # ── Server extension ──────────────────────────────────────────────────
+          $serverDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\server" -Recurse `
+                         -Filter "php_http_server.dll" -ErrorAction SilentlyContinue |
+                       Select-Object -First 1
+          if (-not $serverDll) {
+            Write-Error "php_http_server.dll not found after server build"
+            exit 1
+          }
+          Copy-Item $serverDll.FullName -Destination "$stageDir\ext\php_http_server.dll" -Force
+          Write-Host "Added server: $($serverDll.FullName) -> ext\php_http_server.dll"
+
           # ── php.ini (from development template + extensions + xdebug) ───────────
           $iniPath = Join-Path $stageDir "php.ini"
           $devIni  = Join-Path $stageDir "php.ini-development"
@@ -619,6 +699,9 @@ jobs:
             "extension=pdo_mysql",
             "extension=pdo_pgsql",
             "extension=pdo_sqlite",
+            "",
+            "; TrueAsync HTTP server (HTTP/1+2)",
+            "extension=php_http_server.dll",
             "",
             "; Xdebug (loaded with mode=off - enable via xdebug.mode=debug etc.)",
             "zend_extension = php_xdebug.dll",
@@ -679,6 +762,7 @@ jobs:
 
             ### Included extensions
             - **async** — TrueAsync coroutine engine
+            - **http_server** — Built-in HTTP/1+2 server
             - **xdebug** — Debugger and profiler
 
             ### Downloads
