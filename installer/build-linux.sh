@@ -425,7 +425,9 @@ read_config() {
     fi
 
     # Override branch if specified
-    [[ -n "$PHP_BRANCH" ]] && PHP_SRC_BRANCH="$PHP_BRANCH"
+    if [[ -n "$PHP_BRANCH" ]]; then
+        PHP_SRC_BRANCH="$PHP_BRANCH"
+    fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
