@@ -405,6 +405,18 @@ jobs:
           ref: ${{ needs.config.outputs.server_branch }}
           path: server
 
+      - name: Patch server config.w32 (drop in-tree PHP_INSTALL_HEADERS)
+        shell: pwsh
+        run: |
+          # config.w32 calls PHP_INSTALL_HEADERS("ext/http_server/include", ...)
+          # which only works for in-tree extension builds. We build standalone
+          # via phpize, where this path doesn't exist. Header install isn't
+          # needed for the .dll artifact, so strip the line.
+          $cw32 = "$env:GITHUB_WORKSPACE\server\config.w32"
+          (Get-Content $cw32) |
+            Where-Object { $_ -notmatch 'PHP_INSTALL_HEADERS\("ext/http_server' } |
+            Set-Content $cw32
+
       - name: Create server build task script
         shell: pwsh
         run: |
