@@ -1,7 +1,7 @@
 # TrueAsync PHP — Alpine edge image (cli + fpm)
 # Build args: PHP_SRC_BRANCH, ASYNC_BRANCH, XDEBUG_BRANCH, SERVER_BRANCH
 #
-# Uses alpine:edge for prebuilt OpenSSL 3.5+, nghttp2, nghttp3, ngtcp2.
+# HTTP/2 only. For HTTP/3 use the Debian image (Alpine ngtcp2 ships GnuTLS-only).
 
 # =============================================================================
 # Stage 1: Build PHP from source
@@ -21,7 +21,7 @@ ARG DEBUG=false
 RUN apk add --no-cache \
     autoconf automake bison re2c pkgconf perl \
     build-base git curl wget cmake ninja linux-headers \
-    openssl-dev nghttp2-dev nghttp3-dev ngtcp2-dev curl-dev \
+    openssl-dev nghttp2-dev curl-dev \
     libxml2-dev sqlite-dev \
     libzip-dev zlib-dev \
     libpq-dev oniguruma-dev libsodium-dev \
@@ -112,18 +112,15 @@ RUN /usr/local/bin/phpize \
     && make -j"$(nproc)" \
     && make install
 
-# Build true_async_server (HTTP/1+2+3 built-in server)
+# Build true_async_server (HTTP/1+2 only on Alpine — no HTTP/3)
 WORKDIR /usr/src/server
 RUN /usr/local/bin/phpize \
     && ./configure \
            --with-php-config=/usr/local/bin/php-config \
            --enable-http-server \
            --enable-http2 \
-           --enable-http3 \
            --with-openssl \
            --with-nghttp2 \
-           --with-nghttp3 \
-           --with-ngtcp2 \
     && make -j"$(nproc)" \
     && make install
 
@@ -141,7 +138,7 @@ FROM alpine:edge
 
 RUN apk add --no-cache \
     libssl3 libcrypto3 \
-    nghttp2-libs nghttp3 libngtcp2 libngtcp2-crypto-ossl \
+    nghttp2-libs \
     libcurl \
     libuv \
     libxml2 sqlite-libs \
