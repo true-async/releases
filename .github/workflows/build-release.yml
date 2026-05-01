@@ -427,7 +427,7 @@ jobs:
             "if %errorlevel% neq 0 exit /b 3",
             "call `"$phpize`"",
             "if %errorlevel% neq 0 exit /b 3",
-            "call configure.bat --with-php-build=%DEPS_DIR% --enable-http-server --enable-http2",
+            "call configure.bat --with-php-build=%DEPS_DIR% --enable-true-async-server --enable-http2",
             "if %errorlevel% neq 0 exit /b 3",
             "nmake /NOLOGO",
             "if %errorlevel% neq 0 exit /b 3",
