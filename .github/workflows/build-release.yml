@@ -32,6 +32,8 @@ jobs:
       frankenphp_branch: ${{ steps.read.outputs.frankenphp_branch }}
       server_repo: ${{ steps.read.outputs.server_repo }}
       server_branch: ${{ steps.read.outputs.server_branch }}
+      phpredis_repo: ${{ steps.read.outputs.phpredis_repo }}
+      phpredis_branch: ${{ steps.read.outputs.phpredis_branch }}
       version: ${{ steps.read.outputs.version }}
       php_version: ${{ steps.read.outputs.php_version }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
@@ -51,6 +53,8 @@ jobs:
           echo "frankenphp_branch=$(jq -r '.frankenphp.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "server_repo=$(jq -r '.extensions.server.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "server_branch=$(jq -r '.extensions.server.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "phpredis_repo=$(jq -r '.extensions.phpredis.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "phpredis_branch=$(jq -r '.extensions.phpredis.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
@@ -456,6 +460,65 @@ jobs:
           }
           Write-Host "SUCCESS: php_true_async_server.dll found at $($dll.FullName)"
 
+      # ── phpredis ─────────────────────────────────────────────────────────
+      - name: Checkout phpredis
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.phpredis_repo }}
+          ref: ${{ needs.config.outputs.phpredis_branch }}
+          path: phpredis
+
+      - name: Create phpredis build task script
+        shell: pwsh
+        run: |
+          $objDir = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
+          $develDir = Get-ChildItem -Path $objDir -Directory -Filter "*-devel-*" -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+          if (-not $develDir) {
+            Write-Error "Devel directory not found in $objDir"
+            exit 1
+          }
+          $phpize = Join-Path $develDir.FullName "phpize.bat"
+          if (!(Test-Path $phpize)) {
+            Write-Error "phpize.bat not found in $($develDir.FullName)"
+            exit 1
+          }
+          Write-Host "Using phpize: $phpize"
+          @(
+            "@echo off",
+            "cd /d $($env:GITHUB_WORKSPACE)\phpredis",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call `"$phpize`"",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call configure.bat --with-php-build=%DEPS_DIR% --enable-redis",
+            "if %errorlevel% neq 0 exit /b 3",
+            "nmake /NOLOGO",
+            "if %errorlevel% neq 0 exit /b 3",
+            "exit /b 0"
+          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_phpredis.bat" -Encoding ASCII
+
+      - name: Build phpredis
+        shell: cmd
+        run: |
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_phpredis.bat
+          if %errorlevel% neq 0 exit /b %errorlevel%
+
+      - name: Verify phpredis build
+        shell: pwsh
+        run: |
+          $phpredisDir = "$env:GITHUB_WORKSPACE\phpredis"
+          Write-Host "=== DLLs in phpredis build output ==="
+          Get-ChildItem -Path $phpredisDir -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue |
+            Select-Object Name | Sort-Object Name | Format-Table -AutoSize
+          $dll = Get-ChildItem -Path $phpredisDir -Recurse -Filter "php_redis.dll" -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+          if (-not $dll) {
+            Write-Error "php_redis.dll NOT found under $phpredisDir - phpredis build failed"
+            exit 1
+          }
+          Write-Host "SUCCESS: php_redis.dll found at $($dll.FullName)"
+
       # ── FrankenPHP ────────────────────────────────────────────────────────
       - name: Checkout frankenphp
         uses: actions/checkout@v4
@@ -671,6 +734,17 @@ jobs:
           Copy-Item $serverDll.FullName -Destination "$stageDir\ext\php_true_async_server.dll" -Force
           Write-Host "Added server: $($serverDll.FullName) -> ext\php_true_async_server.dll"
 
+          # ── phpredis ──────────────────────────────────────────────────────────
+          $phpredisDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\phpredis" -Recurse `
+                           -Filter "php_redis.dll" -ErrorAction SilentlyContinue |
+                         Select-Object -First 1
+          if (-not $phpredisDll) {
+            Write-Error "php_redis.dll not found after phpredis build"
+            exit 1
+          }
+          Copy-Item $phpredisDll.FullName -Destination "$stageDir\ext\php_redis.dll" -Force
+          Write-Host "Added phpredis: $($phpredisDll.FullName) -> ext\php_redis.dll"
+
           # ── php.ini (from development template + extensions + xdebug) ───────────
           $iniPath = Join-Path $stageDir "php.ini"
           $devIni  = Join-Path $stageDir "php.ini-development"
@@ -696,6 +770,9 @@ jobs:
             "",
             "; TrueAsync HTTP server (HTTP/1+2)",
             "extension=php_true_async_server.dll",
+            "",
+            "; Redis client",
+            "extension=php_redis.dll",
             "",
             "; Xdebug (loaded with mode=off - enable via xdebug.mode=debug etc.)",
             "zend_extension = php_xdebug.dll",
@@ -757,6 +834,7 @@ jobs:
             ### Included extensions
             - **async** — TrueAsync coroutine engine
             - **http_server** — Built-in HTTP/1+2 server
+            - **redis** — Redis client (phpredis)
             - **xdebug** — Debugger and profiler
 
             ### Downloads

@@ -14,6 +14,8 @@ ARG XDEBUG_REPO=https://github.com/true-async/xdebug.git
 ARG XDEBUG_BRANCH=true-async-86
 ARG SERVER_REPO=https://github.com/true-async/server.git
 ARG SERVER_BRANCH=main
+ARG PHPREDIS_REPO=https://github.com/true-async/phpredis.git
+ARG PHPREDIS_BRANCH=true-async
 ARG DEBUG=false
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -84,7 +86,8 @@ RUN wget -q https://github.com/curl/curl/releases/download/curl-8_12_1/curl-8.12
 RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-src \
     && git clone --depth 1 --branch ${ASYNC_BRANCH} ${ASYNC_REPO} /usr/src/php-src/ext/async \
     && git clone --depth 1 --branch ${XDEBUG_BRANCH} ${XDEBUG_REPO} /usr/src/xdebug \
-    && git clone --depth 1 --branch ${SERVER_BRANCH} ${SERVER_REPO} /usr/src/server
+    && git clone --depth 1 --branch ${SERVER_BRANCH} ${SERVER_REPO} /usr/src/server \
+    && git clone --depth 1 --branch ${PHPREDIS_BRANCH} ${PHPREDIS_REPO} /usr/src/phpredis
 
 # Fix possible Windows line endings
 RUN dos2unix /usr/src/php-src/ext/async/config.m4
@@ -176,6 +179,13 @@ RUN /usr/local/bin/phpize \
     && make -j"$(nproc)" \
     && make install
 
+# Build phpredis
+WORKDIR /usr/src/phpredis
+RUN /usr/local/bin/phpize \
+    && ./configure --with-php-config=/usr/local/bin/php-config --enable-redis \
+    && make -j"$(nproc)" \
+    && make install
+
 # PHP config
 RUN mkdir -p /etc/php.d \
     && printf '[opcache]\n\
@@ -193,7 +203,8 @@ opcache.jit=tracing\n\
 opcache.jit_buffer_size=128M\n' > /etc/php.d/opcache.ini \
     && echo "zend_extension=xdebug.so" > /etc/php.d/xdebug.ini \
     && echo "xdebug.mode=off" >> /etc/php.d/xdebug.ini \
-    && echo "extension=true_async_server" > /etc/php.d/true_async_server.ini
+    && echo "extension=true_async_server" > /etc/php.d/true_async_server.ini \
+    && echo "extension=redis" > /etc/php.d/redis.ini
 
 # =============================================================================
 # Stage 2: Runtime image

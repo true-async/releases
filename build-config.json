@@ -19,6 +19,10 @@
       "repo": "true-async/xdebug",
       "branch": "php-8.6.0-trueasync-0.6.7",
       "path": "ext/xdebug"
+    },
+    "phpredis": {
+      "repo": "true-async/phpredis",
+      "branch": "v0.7.0-alpha.10"
     }
   },
   "frankenphp": {

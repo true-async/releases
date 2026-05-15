@@ -54,6 +54,21 @@ A fork of [dunglas/frankenphp](https://github.com/dunglas/frankenphp) with TrueA
 
 Here `A.B.C` is the **product version** (e.g. `0.6.5`). Tags are always created from the `true-async` branch.
 
+### `true-async/phpredis`
+
+A fork of [phpredis/phpredis](https://github.com/phpredis/phpredis) with TrueAsync PHP 8.6+ compatibility. The working branch is `true-async`.
+
+Has its own independent version, not tied to the PHP version.
+
+| Type | Format | Example |
+|---|---|---|
+| Stable release | `vX.Y.Z` | `v0.7.0` |
+| Pre-release (beta) | `vX.Y.Z-beta.N` | `v0.7.0-beta.1` |
+| Pre-release (RC) | `vX.Y.Z-rc.N` | `v0.7.0-rc.1` |
+| Pre-release (alpha) | `vX.Y.Z-alpha.N` | `v0.7.0-alpha.1` |
+
+Tags are always created from the `true-async` branch.
+
 ### `true-async/xdebug`
 
 A fork of [xdebug/xdebug](https://github.com/xdebug/xdebug) with TrueAsync support. Unlike `php-async`, xdebug is tightly coupled to a specific PHP version — each PHP major/minor version has a dedicated branch.
@@ -80,10 +95,11 @@ Always tag source repositories **before** triggering the release in this repo:
 
 1. Tag `true-async/php-src` — tag from branch `true-async-stable`
 2. Tag `true-async/php-async` — tag from branch `main`
-3. Tag `true-async/xdebug` — tag from branch `true-async-86` (or matching PHP version branch)
-4. Tag `true-async/frankenphp` — tag from branch `true-async`
-5. Update `build-config.json` branch fields to point to the new tags
-6. Tag `true-async/releases` → CI/CD starts
+3. Tag `true-async/phpredis` — tag from branch `true-async`
+4. Tag `true-async/xdebug` — tag from branch `true-async-86` (or matching PHP version branch)
+5. Tag `true-async/frankenphp` — tag from branch `true-async`
+6. Update `build-config.json` branch fields to point to the new tags
+7. Tag `true-async/releases` → CI/CD starts
 
 ---
 
@@ -99,8 +115,9 @@ Check that the branches point to the correct commits:
   "php_is_latest": true,
   "php_src": { "branch": "true-async-stable" },
   "extensions": {
-    "async":  { "branch": "main" },
-    "xdebug": { "branch": "true-async-86" }
+    "async":    { "branch": "main" },
+    "xdebug":   { "branch": "true-async-86" },
+    "phpredis": { "branch": "v0.7.0" }
   }
 }
 ```
