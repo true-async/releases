@@ -41,14 +41,13 @@ RUN wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.0/o
     && make -j"$(nproc)" && make install_sw && ldconfig \
     && cd / && rm -rf openssl*
 
-# libuv — TrueAsync fork (true-async/libuv@true-async): v1.52.1 base plus
-# "skip redundant EPOLL_CTL_MOD" (saves one io_uring_enter per request on
-# the keep-alive write-then-read path).
-RUN git clone --depth 1 --branch true-async https://github.com/true-async/libuv.git \
-    && cd libuv && mkdir build && cd build \
+# libuv 1.52.1 (upstream)
+RUN wget -q https://github.com/libuv/libuv/archive/v1.52.1.tar.gz \
+    && tar -xf v1.52.1.tar.gz \
+    && cd libuv-1.52.1 && mkdir build && cd build \
     && cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
     && ninja && ninja install && ldconfig \
-    && cd / && rm -rf libuv
+    && cd / && rm -rf libuv*
 
 # nghttp2 1.59.0 — HTTP/2 support
 RUN wget -q https://github.com/nghttp2/nghttp2/releases/download/v1.59.0/nghttp2-1.59.0.tar.gz \

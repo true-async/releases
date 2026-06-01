@@ -8,7 +8,7 @@
   "extensions": {
     "async": {
       "repo": "true-async/php-async",
-      "branch": "adaptive-reactor-throttle",
+      "branch": "reactor-throttle-10ms",
       "path": "ext/async"
     },
     "server": {
