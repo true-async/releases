@@ -63,29 +63,63 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # Build Docker images
+  # Build per platform on native runners
   # ---------------------------------------------------------------------------
-  build-docker:
-    name: "Docker (${{ matrix.variant }})"
+  build:
+    name: "Docker (${{ matrix.variant }} / ${{ matrix.platform }})"
     needs: config
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Debian
           - variant: debian
+            platform: linux/amd64
+            runner: ubuntu-latest
             dockerfile: docker/Dockerfile.debian
             debug: false
+
+          - variant: debian
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            dockerfile: docker/Dockerfile.debian
+            debug: false
+
+          # Alpine
           - variant: alpine
+            platform: linux/amd64
+            runner: ubuntu-latest
             dockerfile: docker/Dockerfile.alpine
             debug: false
-          - variant: debian-debug
-            dockerfile: docker/Dockerfile.debian
-            debug: true
+
+          - variant: alpine
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            dockerfile: docker/Dockerfile.alpine
+            debug: false
+
+          # FrankenPHP
           - variant: frankenphp
+            platform: linux/amd64
+            runner: ubuntu-latest
             dockerfile: docker/Dockerfile.frankenphp
             debug: false
+
+          - variant: frankenphp
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            dockerfile: docker/Dockerfile.frankenphp
+            debug: false
+
+          # Debug — amd64 only to save resources
+          - variant: debian-debug
+            platform: linux/amd64
+            runner: ubuntu-latest
+            dockerfile: docker/Dockerfile.debian
+            debug: true
+
     steps:
       - uses: actions/checkout@v4
 
@@ -99,52 +133,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Compute tags
-        id: tags
-        run: |
-          PHP_VER="${{ needs.config.outputs.php_version }}"
-          VERSION="${{ needs.config.outputs.version }}"
-          IS_RELEASE="${{ needs.config.outputs.is_release }}"
-          IS_PRERELEASE="${{ needs.config.outputs.is_prerelease }}"
-          PHP_IS_LATEST="${{ needs.config.outputs.php_is_latest }}"
-          IMAGE="trueasync/php-true-async"
-
-          {
-            echo "tags<<EOF"
-            if [[ "${{ matrix.variant }}" == "frankenphp" ]]; then
-              [[ "$IS_RELEASE" == "true" ]] && echo "${IMAGE}:${VERSION}-php${PHP_VER}-frankenphp"
-              if [[ "$IS_PRERELEASE" != "true" ]]; then
-                echo "${IMAGE}:latest-php${PHP_VER}-frankenphp"
-                [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-frankenphp"
-              fi
-            elif [[ "${{ matrix.debug }}" == "true" ]]; then
-              if [[ "$IS_PRERELEASE" == "true" ]]; then
-                # Pre-release debug: versioned tag only
-                echo "${IMAGE}:${VERSION}-php${PHP_VER}-debug"
-              else
-                # Stable debug: latest tags only
-                echo "${IMAGE}:latest-php${PHP_VER}-debug"
-                [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-debug"
-              fi
-            elif [[ "${{ matrix.variant }}" == "alpine" ]]; then
-              # Alpine
-              [[ "$IS_RELEASE" == "true" ]] && echo "${IMAGE}:${VERSION}-php${PHP_VER}-alpine"
-              if [[ "$IS_PRERELEASE" != "true" ]]; then
-                echo "${IMAGE}:latest-php${PHP_VER}-alpine"
-                [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest-alpine"
-              fi
-            else
-              # Debian (default)
-              [[ "$IS_RELEASE" == "true" ]] && echo "${IMAGE}:${VERSION}-php${PHP_VER}"
-              if [[ "$IS_PRERELEASE" != "true" ]]; then
-                echo "${IMAGE}:latest-php${PHP_VER}"
-                [[ "$PHP_IS_LATEST" == "true" ]] && echo "${IMAGE}:latest"
-              fi
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and push
+      # test_only=true: build locally and verify the image works
+      - name: Build (test only)
+        if: ${{ inputs.test_only }}
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -157,18 +148,157 @@ jobs:
             SERVER_BRANCH=${{ needs.config.outputs.server_branch }}
             PHPREDIS_BRANCH=${{ needs.config.outputs.phpredis_branch }}
             DEBUG=${{ matrix.debug }}
-          push: ${{ !inputs.test_only }}
           load: true
-          tags: ${{ steps.tags.outputs.tags }}
-          cache-from: type=gha,scope=${{ matrix.variant }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+          tags: trueasync/php-true-async:ci-test
+          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}-${{ matrix.platform }}
 
-      - name: Verify image
+      - name: Verify image (test only)
+        if: ${{ inputs.test_only }}
         run: |
-          FIRST_TAG=$(echo "${{ steps.tags.outputs.tags }}" | head -1)
           if [[ "${{ matrix.variant }}" == "frankenphp" ]]; then
-            docker run --rm "${FIRST_TAG}" frankenphp version
+            docker run --rm trueasync/php-true-async:ci-test frankenphp version
           else
-            docker run --rm "${FIRST_TAG}" php -v
-            docker run --rm "${FIRST_TAG}" php -m
+            docker run --rm trueasync/php-true-async:ci-test php -v
+            docker run --rm trueasync/php-true-async:ci-test php -m
           fi
+
+      # push mode: build and push by digest only — tags are applied in the merge job
+      - name: Build and push by digest
+        id: build
+        if: ${{ !inputs.test_only }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: |
+            PHP_SRC_BRANCH=${{ needs.config.outputs.php_src_branch }}
+            ASYNC_BRANCH=${{ needs.config.outputs.async_branch }}
+            XDEBUG_BRANCH=${{ needs.config.outputs.xdebug_branch }}
+            FRANKENPHP_BRANCH=${{ needs.config.outputs.frankenphp_branch }}
+            SERVER_BRANCH=${{ needs.config.outputs.server_branch }}
+            PHPREDIS_BRANCH=${{ needs.config.outputs.phpredis_branch }}
+            DEBUG=${{ matrix.debug }}
+          outputs: type=image,name=trueasync/php-true-async,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}-${{ matrix.platform }}
+
+      - name: Export digest
+        if: ${{ !inputs.test_only }}
+        run: |
+          ARCH="${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}"
+          mkdir -p /tmp/digests
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${ARCH}"
+
+      - name: Upload digest artifact
+        if: ${{ !inputs.test_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.variant }}-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Merge per-platform digests into final multi-arch manifest
+  # ---------------------------------------------------------------------------
+  merge:
+    name: "Manifest (${{ matrix.variant }})"
+    needs: [config, build]
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.test_only }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: debian
+            multiarch: true
+          - variant: alpine
+            multiarch: true
+          - variant: frankenphp
+            multiarch: true
+          - variant: debian-debug
+            multiarch: false
+
+    steps:
+      - name: Download digests for ${{ matrix.variant }}
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.variant }}-*
+          merge-multiple: false
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute tags
+        id: tags
+        run: |
+          PHP_VER="${{ needs.config.outputs.php_version }}"
+          VERSION="${{ needs.config.outputs.version }}"
+          IS_RELEASE="${{ needs.config.outputs.is_release }}"
+          IS_PRERELEASE="${{ needs.config.outputs.is_prerelease }}"
+          PHP_IS_LATEST="${{ needs.config.outputs.php_is_latest }}"
+          IMAGE="trueasync/php-true-async"
+          VARIANT="${{ matrix.variant }}"
+
+          TAGS=""
+          if [[ "$VARIANT" == "frankenphp" ]]; then
+            [[ "$IS_RELEASE" == "true" ]] && TAGS="$TAGS ${IMAGE}:${VERSION}-php${PHP_VER}-frankenphp"
+            if [[ "$IS_PRERELEASE" != "true" ]]; then
+              TAGS="$TAGS ${IMAGE}:latest-php${PHP_VER}-frankenphp"
+              [[ "$PHP_IS_LATEST" == "true" ]] && TAGS="$TAGS ${IMAGE}:latest-frankenphp"
+            fi
+          elif [[ "$VARIANT" == "debian-debug" ]]; then
+            if [[ "$IS_PRERELEASE" == "true" ]]; then
+              TAGS="$TAGS ${IMAGE}:${VERSION}-php${PHP_VER}-debug"
+            else
+              TAGS="$TAGS ${IMAGE}:latest-php${PHP_VER}-debug"
+              [[ "$PHP_IS_LATEST" == "true" ]] && TAGS="$TAGS ${IMAGE}:latest-debug"
+            fi
+          elif [[ "$VARIANT" == "alpine" ]]; then
+            [[ "$IS_RELEASE" == "true" ]] && TAGS="$TAGS ${IMAGE}:${VERSION}-php${PHP_VER}-alpine"
+            if [[ "$IS_PRERELEASE" != "true" ]]; then
+              TAGS="$TAGS ${IMAGE}:latest-php${PHP_VER}-alpine"
+              [[ "$PHP_IS_LATEST" == "true" ]] && TAGS="$TAGS ${IMAGE}:latest-alpine"
+            fi
+          else
+            # debian (default)
+            [[ "$IS_RELEASE" == "true" ]] && TAGS="$TAGS ${IMAGE}:${VERSION}-php${PHP_VER}"
+            if [[ "$IS_PRERELEASE" != "true" ]]; then
+              TAGS="$TAGS ${IMAGE}:latest-php${PHP_VER}"
+              [[ "$PHP_IS_LATEST" == "true" ]] && TAGS="$TAGS ${IMAGE}:latest"
+            fi
+          fi
+
+          echo "tags=${TAGS# }" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push manifest
+        run: |
+          IMAGE="trueasync/php-true-async"
+          VARIANT="${{ matrix.variant }}"
+
+          if [[ "${{ matrix.multiarch }}" == "true" ]]; then
+            AMD64=$(cat /tmp/digests/digest-${VARIANT}-amd64/amd64)
+            ARM64=$(cat /tmp/digests/digest-${VARIANT}-arm64/arm64)
+            SOURCES="${IMAGE}@${AMD64} ${IMAGE}@${ARM64}"
+          else
+            AMD64=$(cat /tmp/digests/digest-${VARIANT}-amd64/amd64)
+            SOURCES="${IMAGE}@${AMD64}"
+          fi
+
+          TAGS="${{ steps.tags.outputs.tags }}"
+          if [[ -z "$TAGS" ]]; then
+            echo "No tags computed for $VARIANT, skipping"
+            exit 0
+          fi
+
+          for TAG in $TAGS; do
+            docker buildx imagetools create -t "${TAG}" ${SOURCES}
+          done

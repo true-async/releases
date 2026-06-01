@@ -7,21 +7,23 @@ Pre-built PHP binaries and Docker images with native async/coroutine support via
 ### Docker (Linux)
 
 ```bash
-docker pull trueasync/php-true-async:8.6
-docker run --rm trueasync/php-true-async:8.6 php -v
+docker pull trueasync/php-true-async:latest
+docker run --rm trueasync/php-true-async:latest php -v
 ```
 
-Each image includes both `php` (CLI) and `php-fpm`.
+Each image includes both `php` (CLI) and `php-fpm`. All images are **multi-arch**: `linux/amd64` and `linux/arm64` — Docker picks the right variant automatically.
 
 Available tags:
 
-| Tag                  | Base         | Description                                    |
-|----------------------|--------------|------------------------------------------------|
-| `8.6`                | Ubuntu 24.04 | Full image with cli + fpm                      |
-| `8.6-alpine`         | Alpine 3.20  | Lightweight image with cli + fpm               |
-| `8.6-frankenphp`     | Ubuntu 24.04 | FrankenPHP — Caddy + async PHP worker          |
-| `latest`             | Ubuntu 24.04 | Alias for `8.6`                                |
-| `latest-frankenphp`  | Ubuntu 24.04 | Alias for `8.6-frankenphp`                     |
+| Tag                          | Base         | Arch           | Description                           |
+|------------------------------|--------------|----------------|---------------------------------------|
+| `latest`                     | Ubuntu 24.04 | amd64 + arm64  | Latest stable, cli + fpm              |
+| `latest-alpine`              | Alpine edge  | amd64 + arm64  | Lightweight, cli + fpm                |
+| `latest-frankenphp`          | Ubuntu 24.04 | amd64 + arm64  | FrankenPHP — Caddy + async PHP worker |
+| `latest-debug`               | Ubuntu 24.04 | amd64          | Debug build with symbols              |
+| `{version}-php{ver}`         | Ubuntu 24.04 | amd64 + arm64  | Pinned release, e.g. `0.7.0-php8.4`  |
+| `{version}-php{ver}-alpine`  | Alpine edge  | amd64 + arm64  | Pinned alpine release                 |
+| `{version}-php{ver}-frankenphp` | Ubuntu 24.04 | amd64 + arm64 | Pinned FrankenPHP release            |
 
 ### FrankenPHP (async worker mode)
 
@@ -204,7 +206,8 @@ Standard PHP extensions: curl, mbstring, openssl, pdo, pdo_mysql, pdo_pgsql, pdo
 
 | Platform  | Method             | Variants                  | Status  |
 |-----------|--------------------|---------------------------|---------|
-| Linux     | Docker             | Ubuntu 24.04, Alpine 3.20, FrankenPHP | ✅       |
+| Linux     | Docker (amd64)     | Ubuntu 24.04, Alpine edge, FrankenPHP | ✅       |
+| Linux     | Docker (arm64)     | Ubuntu 24.04, Alpine edge, FrankenPHP | ✅       |
 | Linux     | Build from source  | Ubuntu/Debian (apt)       | ✅       |
 | macOS     | Build from source  | ARM + Intel (Homebrew)    | ✅       |
 | Windows   | Pre-built binaries | Release, Debug (x64)      | ✅       |
