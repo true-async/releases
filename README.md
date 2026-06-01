@@ -25,67 +25,30 @@ Available tags:
 | `{version}-php{ver}-alpine`  | Alpine edge  | amd64 + arm64  | Pinned alpine release                 |
 | `{version}-php{ver}-frankenphp` | Ubuntu 24.04 | amd64 + arm64 | Pinned FrankenPHP release            |
 
-### FrankenPHP (async worker mode)
+### TrueAsync Server
 
-[FrankenPHP](https://github.com/true-async/frankenphp) is a Go-based PHP app server built on top of Caddy. The TrueAsync variant runs PHP as a persistent async worker — one PHP script stays loaded and handles requests as coroutines via the TrueAsync event loop.
+[TrueAsync Server](https://github.com/true-async/server) is a native PHP extension that runs a high-performance HTTP server **directly inside PHP** — no reverse proxy, no external daemon, no separate process.
 
-```bash
-docker pull trueasync/php-true-async:latest-frankenphp
-docker run --rm -p 8080:8080 trueasync/php-true-async:latest-frankenphp
-```
-
-Then open http://localhost:8080 — the bundled demo page shows live runtime stats (PHP version, active coroutines, memory).
-
-To use your own entrypoint:
-
-```bash
-docker run --rm -p 8080:8080 \
-  -v ./my-app:/app \
-  -v ./Caddyfile:/etc/caddy/Caddyfile \
-  trueasync/php-true-async:latest-frankenphp
-```
-
-Example Caddyfile with async worker:
-
-```
-{
-    admin off
-    frankenphp {}
-}
-
-:8080 {
-    root * /app
-    php_server {
-        index off
-        file_server off
-        worker {
-            file /app/entrypoint.php
-            num 1
-            async
-            buffer_size 20
-            match /*
-        }
-    }
-}
-```
-
-Example `entrypoint.php`:
+A single `$server->start()` call serves HTTP/1.1, HTTP/2, and HTTP/3 (QUIC) over the same port via ALPN negotiation, driven by the TrueAsync event loop. WebSocket, SSE, and gRPC are planned.
 
 ```php
-<?php
-use FrankenPHP\HttpServer;
-use FrankenPHP\Request;
-use FrankenPHP\Response;
+use TrueAsync\HttpServer;
+use TrueAsync\HttpServerConfig;
 
-set_time_limit(0);
+$server = new HttpServer(
+    (new HttpServerConfig())
+        ->addListener('0.0.0.0', 8080)
+        ->setWorkers(4)
+);
 
-HttpServer::onRequest(function (Request $request, Response $response): void {
-    $response->setStatus(200);
-    $response->setHeader('Content-Type', 'text/plain');
-    $response->write('Hello from TrueAsync!');
-    $response->end();
+$server->addHttpHandler(function ($request, $response) {
+    $response->setStatusCode(200)->setBody('Hello, World!');
 });
+
+$server->start();
 ```
+
+See [true-async/server](https://github.com/true-async/server) for installation and full documentation.
 
 ### Build from Source (Linux)
 
@@ -221,6 +184,7 @@ Build parameters are defined in [`build-config.json`](build-config.json):
 
 ## Links
 
+- [TrueAsync Server](https://github.com/true-async/server) — native HTTP/1.1, HTTP/2, HTTP/3 server as a PHP extension
 - [Docker Hub](https://hub.docker.com/r/trueasync/php-true-async) — Docker images
 - [TrueAsync PHP Source](https://github.com/true-async/php-src) — PHP fork with async API
 - [TrueAsync Extension](https://github.com/true-async/async) — libuv-based async implementation
