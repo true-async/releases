@@ -97,11 +97,15 @@ WORKDIR /usr/src/php-src
 
 RUN ./buildconf --force \
     && DEBUG_FLAG=$([ "$DEBUG" = "true" ] && echo "--enable-debug" || echo "--disable-debug") \
+    && export CFLAGS="-fstack-protector-strong -fpic -fpie -O2 -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64" \
+    && export CPPFLAGS="$CFLAGS" \
+    && export LDFLAGS="-Wl,-O1 -pie" \
     && PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
        ./configure \
         --prefix=/usr/local \
         --with-config-file-path=/etc \
         --with-config-file-scan-dir=/etc/php.d \
+        --enable-option-checking=fatal \
         $DEBUG_FLAG --enable-zts \
         --enable-async \
         --enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data \
@@ -126,6 +130,7 @@ RUN ./buildconf --force \
         --enable-embed \
         --with-bz2 \
         --with-curl \
+        --with-iconv \
         --with-gettext \
         --with-gmp \
         --with-mysqli=mysqlnd \
@@ -142,6 +147,7 @@ RUN ./buildconf --force \
         --with-freetype \
         --with-zip \
         --with-sodium \
+        --with-password-argon2 \
         --with-readline \
         --with-tidy \
         --with-ldap \
@@ -237,11 +243,23 @@ ENV PATH="/usr/local/bin:/usr/local/sbin:${PATH}"
 RUN cp /usr/local/etc/php-fpm.conf.default /usr/local/etc/php-fpm.conf \
     && cp /usr/local/etc/php-fpm.d/www.conf.default /usr/local/etc/php-fpm.d/www.conf \
     && sed -i 's/;daemonize = yes/daemonize = no/' /usr/local/etc/php-fpm.conf \
-    && sed -i 's/listen = .*/listen = 9000/' /usr/local/etc/php-fpm.d/www.conf
+    && sed -i 's/listen = .*/listen = 9000/' /usr/local/etc/php-fpm.d/www.conf \
+    && { \
+        echo '[global]'; \
+        echo 'error_log = /proc/self/fd/2'; \
+        echo 'log_limit = 8192'; \
+        echo; \
+        echo '[www]'; \
+        echo 'access.log = /proc/self/fd/2'; \
+        echo 'catch_workers_output = yes'; \
+        echo 'decorate_workers_output = no'; \
+    } > /usr/local/etc/php-fpm.d/docker.conf
 
 RUN php -v && php -m
 
 WORKDIR /app
+
+STOPSIGNAL SIGQUIT
 
 EXPOSE 9000
 
