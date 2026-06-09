@@ -16,6 +16,8 @@ ARG SERVER_REPO=https://github.com/true-async/server.git
 ARG SERVER_BRANCH=main
 ARG PHPREDIS_REPO=https://github.com/true-async/phpredis.git
 ARG PHPREDIS_BRANCH=true-async
+ARG CLICKHOUSE_REPO=https://github.com/true-async/php-clickhouse.git
+ARG CLICKHOUSE_BRANCH=v0.1.0
 ARG DEBUG=false
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -87,7 +89,9 @@ RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-
     && git clone --depth 1 --branch ${ASYNC_BRANCH} ${ASYNC_REPO} /usr/src/php-src/ext/async \
     && git clone --depth 1 --branch ${XDEBUG_BRANCH} ${XDEBUG_REPO} /usr/src/xdebug \
     && git clone --depth 1 --branch ${SERVER_BRANCH} ${SERVER_REPO} /usr/src/server \
-    && git clone --depth 1 --branch ${PHPREDIS_BRANCH} ${PHPREDIS_REPO} /usr/src/phpredis
+    && git clone --depth 1 --branch ${PHPREDIS_BRANCH} ${PHPREDIS_REPO} /usr/src/phpredis \
+    && git clone --depth 1 --recurse-submodules --shallow-submodules \
+           --branch ${CLICKHOUSE_BRANCH} ${CLICKHOUSE_REPO} /usr/src/clickhouse
 
 # Fix possible Windows line endings
 RUN dos2unix /usr/src/php-src/ext/async/config.m4
@@ -192,6 +196,24 @@ RUN /usr/local/bin/phpize \
     && make -j"$(nproc)" \
     && make install
 
+# Build clickhouse-cpp static library, then php-clickhouse extension
+WORKDIR /usr/src/clickhouse
+RUN cmake -S third_party/clickhouse-cpp -B third_party/clickhouse-cpp/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DWITH_OPENSSL=ON \
+        -DOPENSSL_ROOT_DIR=/usr/local \
+        -DCH_MAP_BOOL_TO_UINT8=OFF \
+        -DBUILD_TESTS=OFF \
+        -DBUILD_BENCHMARK=OFF \
+    && cmake --build third_party/clickhouse-cpp/build --parallel "$(nproc)" \
+    && /usr/local/bin/phpize \
+    && PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
+       ./configure --with-php-config=/usr/local/bin/php-config --enable-clickhouse-async \
+    && make -j"$(nproc)" \
+    && make install
+
 # PHP config
 RUN mkdir -p /etc/php.d \
     && printf '[opcache]\n\
@@ -210,7 +232,8 @@ opcache.jit_buffer_size=128M\n' > /etc/php.d/opcache.ini \
     && echo "zend_extension=xdebug.so" > /etc/php.d/xdebug.ini \
     && echo "xdebug.mode=off" >> /etc/php.d/xdebug.ini \
     && echo "extension=true_async_server" > /etc/php.d/true_async_server.ini \
-    && echo "extension=redis" > /etc/php.d/redis.ini
+    && echo "extension=redis" > /etc/php.d/redis.ini \
+    && echo "extension=clickhouse_async" > /etc/php.d/clickhouse_async.ini
 
 # =============================================================================
 # Stage 2: Runtime image
