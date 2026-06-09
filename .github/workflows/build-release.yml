@@ -70,135 +70,12 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # Linux x64 build (disabled — binary is not portable across distros)
-  # ---------------------------------------------------------------------------
-  # build-linux:
-  #   needs: config
-  #   runs-on: ubuntu-22.04
-  #   timeout-minutes: 60
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - name: Checkout php-src
-  #       uses: actions/checkout@v4
-  #       with:
-  #         repository: ${{ needs.config.outputs.php_src_repo }}
-  #         ref: ${{ needs.config.outputs.php_src_branch }}
-  #         path: php-src
-  #
-  #     - name: Checkout ext/async
-  #       uses: actions/checkout@v4
-  #       with:
-  #         repository: ${{ needs.config.outputs.async_repo }}
-  #         ref: ${{ needs.config.outputs.async_branch }}
-  #         path: php-src/ext/async
-  #
-  #     - name: Checkout xdebug
-  #       uses: actions/checkout@v4
-  #       with:
-  #         repository: ${{ needs.config.outputs.xdebug_repo }}
-  #         ref: ${{ needs.config.outputs.xdebug_branch }}
-  #         path: xdebug
-  #
-  #     - name: Install dependencies
-  #       run: |
-  #         sudo apt-get update
-  #         sudo apt-get install -y \
-  #           autoconf automake bison re2c pkg-config \
-  #           build-essential curl cmake ninja-build \
-  #           libxml2-dev libsqlite3-dev libcurl4-openssl-dev \
-  #           libssl-dev libzip-dev zlib1g-dev \
-  #           libpq-dev libonig-dev libsodium-dev \
-  #           libreadline-dev libbz2-dev \
-  #           libgmp-dev libicu-dev libxslt1-dev \
-  #           libjpeg-dev libwebp-dev libfreetype6-dev libpng-dev \
-  #           libtidy-dev libldap2-dev \
-  #           libgettextpo-dev libargon2-dev
-  #
-  #         # Build libuv 1.48.0 from source
-  #         wget https://github.com/libuv/libuv/archive/v1.48.0.tar.gz
-  #         tar -xzf v1.48.0.tar.gz
-  #         cd libuv-1.48.0
-  #         mkdir build && cd build
-  #         cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-  #         ninja
-  #         sudo ninja install
-  #         sudo ldconfig
-  #         cd ../..
-  #
-  #         # Build libcurl 8.12.0 from source (need >= 8.11.1 for fully async file uploads)
-  #         wget https://github.com/curl/curl/releases/download/curl-8_12_0/curl-8.12.0.tar.gz
-  #         tar -xzf curl-8.12.0.tar.gz
-  #         cd curl-8.12.0
-  #         ./configure --prefix=/usr/local --with-openssl --enable-shared --disable-static
-  #         make -j$(nproc)
-  #         sudo make install
-  #         sudo ldconfig
-  #
-  #     - name: Build PHP
-  #       working-directory: php-src
-  #       run: |
-  #         COMMON_FLAGS=$(jq -r '.configure.common | join(" ")' ../build-config.json)
-  #         LINUX_FLAGS=$(jq -r '.configure.linux | join(" ")' ../build-config.json)
-  #
-  #         ./buildconf --force
-  #         ./configure \
-  #           --prefix=/opt/php-trueasync \
-  #           $COMMON_FLAGS \
-  #           $LINUX_FLAGS
-  #
-  #         make -j$(nproc)
-  #
-  #     - name: Run ext/async tests
-  #       working-directory: php-src
-  #       run: |
-  #         PHP_BIN="$(pwd)/sapi/cli/php"
-  #         echo "Running ext/async tests..."
-  #         "$PHP_BIN" run-tests.php --show-diff -p "$PHP_BIN" ext/async/tests/
-  #         echo "All ext/async tests passed."
-  #
-  #     - name: Install PHP
-  #       working-directory: php-src
-  #       run: |
-  #         sudo make install
-  #
-  #     - name: Build xdebug
-  #       working-directory: xdebug
-  #       run: |
-  #         /opt/php-trueasync/bin/phpize
-  #         ./configure --with-php-config=/opt/php-trueasync/bin/php-config
-  #         make -j$(nproc)
-  #         sudo make install
-  #
-  #     - name: Verify build
-  #       run: |
-  #         /opt/php-trueasync/bin/php -v
-  #         /opt/php-trueasync/bin/php -m
-  #
-  #     - name: Package
-  #       run: |
-  #         VERSION="${{ needs.config.outputs.version }}"
-  #         ARCHIVE="php-trueasync-${VERSION}-linux-x64.tar.gz"
-  #
-  #         cd /opt
-  #         tar czf "${GITHUB_WORKSPACE}/${ARCHIVE}" php-trueasync/
-  #         echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
-  #
-  #     - name: Upload artifact
-  #       if: ${{ !inputs.test_only }}
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: linux-x64
-  #         path: ${{ env.ARCHIVE }}
-  #         retention-days: 5
-
-  # ---------------------------------------------------------------------------
   # Windows x64 build (Release + Debug via matrix)
   # ---------------------------------------------------------------------------
   build-windows:
     name: "Windows x64 (${{ matrix.build_type }})"
     needs: config
-    runs-on: windows-2022
+    runs-on: windows-2025-vs2026
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -219,7 +96,7 @@ jobs:
       PHP_BUILD_OBJ_DIR: C:\obj
       PHP_BUILD_CACHE_SDK_DIR: C:\build-cache\sdk
       PHP_BUILD_SDK_BRANCH: php-sdk-2.7.1
-      PHP_BUILD_CRT: vs17
+      PHP_BUILD_CRT: vs18
       PLATFORM: x64
       THREAD_SAFE: "1"
     steps:
@@ -284,8 +161,6 @@ jobs:
           cd php-src
           for /f "usebackq tokens=3" %%i in (`findstr PHP_MAJOR_VERSION main\php_version.h`) do set BRANCH=%%i
           for /f "usebackq tokens=3" %%i in (`findstr PHP_MINOR_VERSION main\php_version.h`) do set BRANCH=%BRANCH%.%%i
-          if /i "%BRANCH%" equ "8.5" set BRANCH=master
-          if /i "%BRANCH%" equ "8.6" set BRANCH=master
 
           echo BRANCH=%BRANCH%>> %GITHUB_ENV%
 
