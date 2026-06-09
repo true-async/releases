@@ -442,7 +442,7 @@ jobs:
             "@echo off",
             "cd /d $($env:GITHUB_WORKSPACE)\clickhouse",
             "if %errorlevel% neq 0 exit /b 3",
-            "cmake -S third_party\clickhouse-cpp -B third_party\clickhouse-cpp\build -G `"NMake Makefiles`" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DBUILD_SHARED_LIBS=OFF -DCH_MAP_BOOL_TO_UINT8=OFF -DWITH_OPENSSL=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARK=OFF",
+            "cmake -S third_party\clickhouse-cpp -B third_party\clickhouse-cpp\build -G `"NMake Makefiles`" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DBUILD_SHARED_LIBS=OFF -DCH_MAP_BOOL_TO_UINT8=OFF -DWITH_OPENSSL=ON -DOPENSSL_ROOT_DIR=%DEPS_DIR% -DBUILD_TESTS=OFF -DBUILD_BENCHMARK=OFF",
             "if %errorlevel% neq 0 exit /b 3",
             "cmake --build third_party\clickhouse-cpp\build --parallel",
             "if %errorlevel% neq 0 exit /b 3",
