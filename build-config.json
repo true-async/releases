@@ -26,7 +26,7 @@
     },
     "clickhouse": {
       "repo": "true-async/php-clickhouse",
-      "branch": "v0.1.0"
+      "branch": "v0.1.1"
     }
   },
   "frankenphp": {
