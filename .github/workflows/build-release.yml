@@ -34,6 +34,8 @@ jobs:
       server_branch: ${{ steps.read.outputs.server_branch }}
       phpredis_repo: ${{ steps.read.outputs.phpredis_repo }}
       phpredis_branch: ${{ steps.read.outputs.phpredis_branch }}
+      clickhouse_repo: ${{ steps.read.outputs.clickhouse_repo }}
+      clickhouse_branch: ${{ steps.read.outputs.clickhouse_branch }}
       version: ${{ steps.read.outputs.version }}
       php_version: ${{ steps.read.outputs.php_version }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
@@ -55,6 +57,8 @@ jobs:
           echo "server_branch=$(jq -r '.extensions.server.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "phpredis_repo=$(jq -r '.extensions.phpredis.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "phpredis_branch=$(jq -r '.extensions.phpredis.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "clickhouse_repo=$(jq -r '.extensions.clickhouse.repo' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "clickhouse_branch=$(jq -r '.extensions.clickhouse.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
@@ -76,7 +80,7 @@ jobs:
     name: "Windows x64 (${{ matrix.build_type }})"
     needs: config
     runs-on: windows-2025-vs2026
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -395,6 +399,84 @@ jobs:
           }
           Write-Host "SUCCESS: php_redis.dll found at $($dll.FullName)"
 
+      # ── clickhouse ────────────────────────────────────────────────────────
+      - name: Checkout clickhouse
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.config.outputs.clickhouse_repo }}
+          ref: ${{ needs.config.outputs.clickhouse_branch }}
+          path: clickhouse
+          submodules: recursive
+
+      - name: Patch clickhouse-cpp for MSVC (zstd asm)
+        shell: pwsh
+        run: |
+          $f = "$env:GITHUB_WORKSPACE\clickhouse\third_party\clickhouse-cpp\contrib\zstd\zstd\CMakeLists.txt"
+          if (Test-Path $f) {
+            (Get-Content -LiteralPath $f) `
+              -replace '^\s*decompress/huf_decompress_amd64\.S\s*$',
+                       '        # huf_decompress_amd64.S excluded on MSVC (C fallback used)' |
+              Set-Content -LiteralPath $f
+            Write-Host "Patched zstd CMakeLists.txt"
+          } else {
+            Write-Host "zstd CMakeLists.txt not found, skipping patch"
+          }
+
+      - name: Create clickhouse build task script
+        shell: pwsh
+        run: |
+          $objDir = "$env:PHP_BUILD_OBJ_DIR\${{ matrix.output_dir }}"
+          $develDir = Get-ChildItem -Path $objDir -Directory -Filter "*-devel-*" -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+          if (-not $develDir) {
+            Write-Error "Devel directory not found in $objDir"
+            exit 1
+          }
+          $phpize = Join-Path $develDir.FullName "phpize.bat"
+          if (!(Test-Path $phpize)) {
+            Write-Error "phpize.bat not found in $($develDir.FullName)"
+            exit 1
+          }
+          Write-Host "Using phpize: $phpize"
+          @(
+            "@echo off",
+            "cd /d $($env:GITHUB_WORKSPACE)\clickhouse",
+            "if %errorlevel% neq 0 exit /b 3",
+            "cmake -S third_party\clickhouse-cpp -B third_party\clickhouse-cpp\build -G `"NMake Makefiles`" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DBUILD_SHARED_LIBS=OFF -DCH_MAP_BOOL_TO_UINT8=OFF -DWITH_OPENSSL=OFF -DBUILD_TESTS=OFF -DBUILD_BENCHMARK=OFF",
+            "if %errorlevel% neq 0 exit /b 3",
+            "cmake --build third_party\clickhouse-cpp\build --parallel",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call `"$phpize`"",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call configure.bat --with-php-build=%DEPS_DIR% --enable-clickhouse-async",
+            "if %errorlevel% neq 0 exit /b 3",
+            "nmake /NOLOGO",
+            "if %errorlevel% neq 0 exit /b 3",
+            "exit /b 0"
+          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_clickhouse.bat" -Encoding ASCII
+
+      - name: Build clickhouse
+        shell: cmd
+        run: |
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_clickhouse.bat
+          if %errorlevel% neq 0 exit /b %errorlevel%
+
+      - name: Verify clickhouse build
+        shell: pwsh
+        run: |
+          $clickhouseDir = "$env:GITHUB_WORKSPACE\clickhouse"
+          Write-Host "=== DLLs in clickhouse build output ==="
+          Get-ChildItem -Path $clickhouseDir -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue |
+            Select-Object Name | Sort-Object Name | Format-Table -AutoSize
+          $dll = Get-ChildItem -Path $clickhouseDir -Recurse -Filter "php_clickhouse_async.dll" -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+          if (-not $dll) {
+            Write-Error "php_clickhouse_async.dll NOT found under $clickhouseDir - clickhouse build failed"
+            exit 1
+          }
+          Write-Host "SUCCESS: php_clickhouse_async.dll found at $($dll.FullName)"
+
       # ── FrankenPHP ────────────────────────────────────────────────────────
       - name: Checkout frankenphp
         uses: actions/checkout@v4
@@ -621,6 +703,17 @@ jobs:
           Copy-Item $phpredisDll.FullName -Destination "$stageDir\ext\php_redis.dll" -Force
           Write-Host "Added phpredis: $($phpredisDll.FullName) -> ext\php_redis.dll"
 
+          # ── clickhouse ────────────────────────────────────────────────────────
+          $clickhouseDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\clickhouse" -Recurse `
+                             -Filter "php_clickhouse_async.dll" -ErrorAction SilentlyContinue |
+                           Select-Object -First 1
+          if (-not $clickhouseDll) {
+            Write-Error "php_clickhouse_async.dll not found after clickhouse build"
+            exit 1
+          }
+          Copy-Item $clickhouseDll.FullName -Destination "$stageDir\ext\php_clickhouse_async.dll" -Force
+          Write-Host "Added clickhouse: $($clickhouseDll.FullName) -> ext\php_clickhouse_async.dll"
+
           # ── php.ini (from development template + extensions + xdebug) ───────────
           $iniPath = Join-Path $stageDir "php.ini"
           $devIni  = Join-Path $stageDir "php.ini-development"
@@ -649,6 +742,9 @@ jobs:
             "",
             "; Redis client",
             "extension=php_redis.dll",
+            "",
+            "; ClickHouse client",
+            "extension=php_clickhouse_async.dll",
             "",
             "; Xdebug (loaded with mode=off - enable via xdebug.mode=debug etc.)",
             "zend_extension = php_xdebug.dll",
@@ -711,6 +807,7 @@ jobs:
             - **async** — TrueAsync coroutine engine
             - **http_server** — Built-in HTTP/1+2 server
             - **redis** — Redis client (phpredis)
+            - **clickhouse** — ClickHouse client (php-clickhouse)
             - **xdebug** — Debugger and profiler
 
             ### Downloads
