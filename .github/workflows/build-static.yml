@@ -27,9 +27,12 @@ env:
   SPC_REF: true-async
   # Extensions compiled into the static binary. Kept close to the common set
   # in build-config.json; trimmed for a fast first build, extend as needed.
+  # NOTE: intl is temporarily excluded - ext-intl (C++/ICU) hits a zig-cc
+  # libcxx locale header incompatibility under the static toolchain. Re-add
+  # once the zig/ICU build issue is resolved.
   EXTENSIONS: >-
     async,bcmath,calendar,ctype,curl,dom,exif,fileinfo,filter,ftp,gmp,
-    iconv,intl,mbstring,mbregex,opcache,openssl,pcntl,pdo,pdo_mysql,
+    iconv,mbstring,mbregex,opcache,openssl,pcntl,pdo,pdo_mysql,
     pdo_pgsql,pdo_sqlite,pgsql,phar,posix,session,shmop,simplexml,soap,
     sockets,sqlite3,tokenizer,xml,xmlreader,xmlwriter,xsl,zip,zlib
 
