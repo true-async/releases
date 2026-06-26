@@ -123,22 +123,24 @@ jobs:
         run: |
           php bin/spc download \
             --for-extensions "${{ steps.exts.outputs.list }}" \
-            --for-packages "php-micro" \
             --custom-git "php-src:${{ needs.config.outputs.php_src_branch }}:https://github.com/true-async/php-src.git" \
             --prefer-binary -P 4
 
-      - name: Build static CLI + micro (ZTS)
+      # NOTE: --build-micro is intentionally omitted for now. spc's micro
+      # cli_checks patch is written for older php-src and does not apply to
+      # the 8.6 fork (opcache centralised the CLI check in accel_sapi_is_cli()).
+      # A regenerated php-8.6 micro patch is the follow-up that re-enables it.
+      - name: Build static CLI (ZTS)
         working-directory: spc
         run: |
           php bin/spc build "${{ steps.exts.outputs.list }}" \
-            --build-cli --build-micro --enable-zts
+            --build-cli --enable-zts
 
       - name: Verify binary
         working-directory: spc
         run: |
           ./buildroot/bin/php -v
           ./buildroot/bin/php -m | grep -i async
-          test -f buildroot/bin/micro.sfx && echo "micro.sfx: OK"
           if [ "${{ matrix.os }}" = "linux" ]; then ldd ./buildroot/bin/php || true; fi
 
       - name: Package
