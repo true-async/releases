@@ -126,17 +126,15 @@ jobs:
         run: |
           php bin/spc download \
             --for-extensions "${{ steps.exts.outputs.list }}" \
+            --for-packages "php-micro" \
             --custom-git "php-src:${{ needs.config.outputs.php_src_branch }}:https://github.com/true-async/php-src.git" \
             --prefer-binary -P 4
 
-      # NOTE: --build-micro is disabled for now. The CLI binary works fully
-      # (async loads, all smoke tests pass), but the phpmicro SAPI segfaults
-      # at runtime with TrueAsync. Tracked separately; re-enable once fixed.
-      - name: Build static CLI (ZTS)
+      - name: Build static CLI + micro (ZTS)
         working-directory: spc
         run: |
           php bin/spc build "${{ steps.exts.outputs.list }}" \
-            --build-cli --enable-zts
+            --build-cli --build-micro --enable-zts
 
       - name: Dump build logs on failure
         if: failure()
@@ -152,6 +150,7 @@ jobs:
         run: |
           ./buildroot/bin/php -v
           ./buildroot/bin/php -m | grep -i async
+          test -f buildroot/bin/micro.sfx && echo "micro.sfx: OK"
           if [ "${{ matrix.os }}" = "linux" ]; then ldd ./buildroot/bin/php || true; fi
 
       - name: Package
