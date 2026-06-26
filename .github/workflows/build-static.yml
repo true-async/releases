@@ -133,6 +133,15 @@ jobs:
           php bin/spc build "${{ steps.exts.outputs.list }}" \
             --build-cli --build-micro --enable-zts
 
+      - name: Dump build logs on failure
+        if: failure()
+        working-directory: spc
+        run: |
+          echo "===== php-src.config.log (tail) ====="
+          tail -150 log/php-src.config.log 2>/dev/null || true
+          echo "===== spc.shell.log (tail) ====="
+          tail -100 log/spc.shell.log 2>/dev/null || true
+
       - name: Verify binary
         working-directory: spc
         run: |
