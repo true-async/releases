@@ -73,6 +73,10 @@ jobs:
     needs: config
     name: "Static (${{ matrix.name }})"
     runs-on: ${{ matrix.runner }}
+    # Authenticate spc's GitHub API calls (version resolution) to avoid the
+    # unauthenticated 60 req/h rate limit, which 403s on shared CI runners.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
