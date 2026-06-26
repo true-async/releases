@@ -1,0 +1,167 @@
+name: Build Static Binaries
+
+# Self-contained, statically linked TrueAsync PHP binaries (no system PHP
+# needed to run them) built with static-php-cli. See true-async/php-async#156.
+#
+# Build matrix starts with linux-x86_64 only; arm64 and macOS targets are
+# added once the first target is green (see the `matrix.include` block).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      test_only:
+        description: 'Test build only (no release, no artifacts published)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  # static-php-cli fork carrying the ext-async + php-src-fork config.
+  SPC_REPO: true-async/static-php-cli
+  SPC_REF: true-async
+  # Extensions compiled into the static binary. Kept close to the common set
+  # in build-config.json; trimmed for a fast first build, extend as needed.
+  EXTENSIONS: >-
+    async,bcmath,calendar,ctype,curl,dom,exif,fileinfo,filter,ftp,gmp,
+    iconv,intl,mbstring,mbregex,opcache,openssl,pcntl,pdo,pdo_mysql,
+    pdo_pgsql,pdo_sqlite,pgsql,phar,posix,session,shmop,simplexml,soap,
+    sockets,sqlite3,tokenizer,xml,xmlreader,xmlwriter,xsl,zip,zlib
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Read build configuration (version, php version, php-src ref)
+  # ---------------------------------------------------------------------------
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      php_version: ${{ steps.read.outputs.php_version }}
+      php_src_branch: ${{ steps.read.outputs.php_src_branch }}
+      is_prerelease: ${{ steps.read.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read build-config.json
+        id: read
+        run: |
+          echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc) ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Build the static binary per target
+  # ---------------------------------------------------------------------------
+  build-static:
+    needs: config
+    name: "Static (${{ matrix.name }})"
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            runner: ubuntu-latest
+            arch: x86_64
+            os: linux
+          # Enable after the first target is green:
+          # - name: linux-aarch64
+          #   runner: ubuntu-24.04-arm
+          #   arch: aarch64
+          #   os: linux
+          # - name: macos-aarch64
+          #   runner: macos-14
+          #   arch: aarch64
+          #   os: macos
+          # - name: macos-x86_64
+          #   runner: macos-13
+          #   arch: x86_64
+          #   os: macos
+    steps:
+      - name: Setup PHP (host for static-php-cli)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, zlib, curl, dom, xml, tokenizer
+          tools: composer
+
+      - name: Checkout static-php-cli fork
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SPC_REPO }}
+          ref: ${{ env.SPC_REF }}
+          path: spc
+
+      - name: Install static-php-cli dependencies
+        working-directory: spc
+        run: composer install --no-dev --no-interaction --no-progress
+
+      - name: Normalize extension list
+        id: exts
+        run: echo "list=$(echo '${{ env.EXTENSIONS }}' | tr -d ' \n')" >> "$GITHUB_OUTPUT"
+
+      - name: spc doctor (install build tools)
+        working-directory: spc
+        run: php bin/spc doctor --auto-fix || true
+
+      - name: Download sources
+        working-directory: spc
+        run: |
+          php bin/spc download \
+            --for-extensions "${{ steps.exts.outputs.list }}" \
+            --for-packages "php-micro" \
+            --custom-git "php-src:${{ needs.config.outputs.php_src_branch }}:https://github.com/true-async/php-src.git" \
+            --prefer-binary -P 4
+
+      - name: Build static CLI + micro (ZTS)
+        working-directory: spc
+        run: |
+          php bin/spc build "${{ steps.exts.outputs.list }}" \
+            --build-cli --build-micro --enable-zts
+
+      - name: Verify binary
+        working-directory: spc
+        run: |
+          ./buildroot/bin/php -v
+          ./buildroot/bin/php -m | grep -i async
+          test -f buildroot/bin/micro.sfx && echo "micro.sfx: OK"
+          if [ "${{ matrix.os }}" = "linux" ]; then ldd ./buildroot/bin/php || true; fi
+
+      - name: Package
+        id: pkg
+        working-directory: spc
+        run: |
+          PKG="php-trueasync-${{ needs.config.outputs.version }}-php${{ needs.config.outputs.php_version }}-${{ matrix.name }}"
+          mkdir -p "dist/${PKG}"
+          cp buildroot/bin/php "dist/${PKG}/"
+          [ -f buildroot/bin/micro.sfx ] && cp buildroot/bin/micro.sfx "dist/${PKG}/" || true
+          tar -C dist -czf "${PKG}.tar.gz" "${PKG}"
+          echo "file=spc/${PKG}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-${{ matrix.name }}
+          path: ${{ steps.pkg.outputs.file }}
+
+      - name: Publish to release
+        if: ${{ github.event_name == 'push' && !inputs.test_only }}
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ needs.config.outputs.is_prerelease == 'true' }}
+          tag_name: ${{ github.ref_name }}
+          files: ${{ steps.pkg.outputs.file }}
