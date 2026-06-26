@@ -23,8 +23,12 @@ set -euo pipefail
 
 if [[ -z "${__TRUEASYNC_RELAUNCHED:-}" ]] && ! [[ -t 0 ]] && [[ "${NO_INTERACTIVE:-${CI:-false}}" != "true" ]]; then
     _tmpscript=$(mktemp)
-    cat > "$_tmpscript"
-    __TRUEASYNC_RELAUNCHED=1 exec bash "$_tmpscript" "$@" < /dev/tty
+    # bash buffers stdin in large chunks when piped, so `cat` would only capture
+    # the tail of the script that bash hasn't yet consumed. Re-download instead.
+    curl -fsSL "https://raw.githubusercontent.com/true-async/releases/master/installer/build-macos.sh" \
+        -o "$_tmpscript"
+    export __TRUEASYNC_RELAUNCHED=1
+    exec bash "$_tmpscript" "$@" < /dev/tty
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
