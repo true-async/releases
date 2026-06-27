@@ -20,17 +20,17 @@ jobs:
       - name: git config
         run: git config --global core.autocrlf false && git config --global core.eol lf
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Checkout php-src
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: true-async/php-src
           ref: true-async
           path: php-src
 
       - name: Checkout ext/async
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: true-async/php-async
           ref: main
@@ -120,7 +120,7 @@ jobs:
           echo All ext/async tests passed.
 
       - name: Upload build directory as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-debug-build
           path: C:\obj\Debug_TS\
