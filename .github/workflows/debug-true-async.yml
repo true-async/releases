@@ -9,10 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout php-src (true-async branch)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: true-async/php-src
           ref: true-async
@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 1
 
       - name: Checkout async extension into php-src/ext/async (main)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: true-async/php-async
           ref: main
