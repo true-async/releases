@@ -40,7 +40,7 @@ jobs:
       php_version: ${{ steps.read.outputs.php_version }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read build-config.json
         id: read
@@ -107,17 +107,17 @@ jobs:
       - name: git config
         run: git config --global core.autocrlf false && git config --global core.eol lf
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Checkout php-src
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.config.outputs.php_src_repo }}
           ref: ${{ needs.config.outputs.php_src_branch }}
           path: php-src
 
       - name: Checkout ext/async
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.config.outputs.async_repo }}
           ref: ${{ needs.config.outputs.async_branch }}
@@ -130,7 +130,7 @@ jobs:
           xcopy /E /I /H /Y async php-src\ext\async
 
       - name: Checkout xdebug
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.config.outputs.xdebug_repo }}
           ref: ${{ needs.config.outputs.xdebug_branch }}
@@ -283,7 +283,7 @@ jobs:
 
       # ── Server extension ──────────────────────────────────────────────────
       - name: Checkout server
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.config.outputs.server_repo }}
           ref: ${{ needs.config.outputs.server_branch }}
@@ -342,7 +342,7 @@ jobs:
 
       # ── phpredis ─────────────────────────────────────────────────────────
       - name: Checkout phpredis
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.config.outputs.phpredis_repo }}
           ref: ${{ needs.config.outputs.phpredis_branch }}
@@ -401,7 +401,7 @@ jobs:
 
       # ── clickhouse ────────────────────────────────────────────────────────
       - name: Checkout clickhouse
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.config.outputs.clickhouse_repo }}
           ref: ${{ needs.config.outputs.clickhouse_branch }}
@@ -479,7 +479,7 @@ jobs:
 
       # ── FrankenPHP ────────────────────────────────────────────────────────
       - name: Checkout frankenphp
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.config.outputs.frankenphp_repo }}
           ref: ${{ needs.config.outputs.frankenphp_branch }}
@@ -615,7 +615,7 @@ jobs:
 
       - name: Upload FrankenPHP artifact
         if: ${{ !inputs.test_only }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-x64${{ matrix.artifact_suffix }}-frankenphp
           path: ${{ env.FRANKENPHP_ARCHIVE }}
@@ -760,7 +760,7 @@ jobs:
 
       - name: Upload artifact
         if: ${{ !inputs.test_only }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-x64${{ matrix.artifact_suffix }}
           path: ${{ env.ARCHIVE }}
@@ -774,10 +774,10 @@ jobs:
     needs: [config, build-windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -794,7 +794,7 @@ jobs:
           cat sha256sums.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           prerelease: ${{ needs.config.outputs.is_prerelease == 'true' }}
           name: "TrueAsync PHP ${{ needs.config.outputs.version }} (php${{ needs.config.outputs.php_version }})"
@@ -844,7 +844,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout website repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: true-async/true-async.github.io
           token: ${{ secrets.SITE_DEPLOY_TOKEN }}
