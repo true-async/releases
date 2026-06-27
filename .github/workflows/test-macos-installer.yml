@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run installer script
         run: bash installer/build-macos.sh
