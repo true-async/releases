@@ -34,7 +34,7 @@ jobs:
       is_release: ${{ steps.read.outputs.is_release }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read build-config.json
         id: read
@@ -121,14 +121,14 @@ jobs:
             debug: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub
         if: ${{ !inputs.test_only }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -136,7 +136,7 @@ jobs:
       # test_only=true: build locally and verify the image works
       - name: Build (test only)
         if: ${{ inputs.test_only }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -167,7 +167,7 @@ jobs:
       - name: Build and push by digest
         id: build
         if: ${{ !inputs.test_only }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -192,7 +192,7 @@ jobs:
 
       - name: Upload digest artifact
         if: ${{ !inputs.test_only }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digest-${{ matrix.variant }}-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
           path: /tmp/digests/*
@@ -222,20 +222,20 @@ jobs:
 
     steps:
       - name: Download digests for ${{ matrix.variant }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digest-${{ matrix.variant }}-*
           merge-multiple: false
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Compute tags
         id: tags
