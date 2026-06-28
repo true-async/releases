@@ -87,6 +87,39 @@
       "--with-webp",
       "--with-freetype",
       "--enable-debug-pack"
+    ],
+    "android": [
+      "--enable-embed=static",
+      "--disable-phpdbg",
+      "--disable-cli",
+      "--disable-cgi",
+      "--without-readline",
+      "--without-ldap",
+      "--without-tidy",
+      "--without-pgsql",
+      "--without-pdo-pgsql",
+      "--without-gd",
+      "--without-sodium",
+      "--without-gmp",
+      "--without-xsl",
+      "--without-bz2",
+      "--without-gettext",
+      "--disable-exif",
+      "--disable-intl",
+      "--disable-soap",
+      "--disable-calendar",
+      "--disable-ftp",
+      "--disable-shmop",
+      "--with-pdo-sqlite",
+      "--with-sqlite3",
+      "--with-openssl",
+      "--with-curl",
+      "--with-zlib"
     ]
+  },
+  "android": {
+    "ndk_version": "27.0.12077973",
+    "api_level": "24",
+    "abis": ["arm64-v8a", "x86_64"]
   }
 }
