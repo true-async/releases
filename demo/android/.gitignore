@@ -1,0 +1,8 @@
+.gradle/
+.idea/
+build/
+app/build/
+local.properties
+# Generated from PHP build artifacts — not committed
+app/src/main/jniLibs/
+app/src/main/cpp/include/
