@@ -121,7 +121,7 @@
   },
   "android": {
     "ndk_version": "27.0.12077973",
-    "api_level": "24",
+    "api_level": "29",
     "abis": ["arm64-v8a", "x86_64"]
   }
 }
