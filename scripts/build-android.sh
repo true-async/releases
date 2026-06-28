@@ -106,11 +106,10 @@ export CFLAGS="-fPIC --sysroot=${SYSROOT} -D__ANDROID_API__=${API_LEVEL} -I${DEP
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="--sysroot=${SYSROOT} -L${DEPS_PREFIX}/lib"
 
-# Replace (not prepend) so cross-compiled .pc files are the only ones found.
-# Cover lib, lib64, share variants since cmake target may vary.
+# Replace default pkg-config search paths so only cross-compiled .pc files are found.
+# Do NOT set PKG_CONFIG_SYSROOT_DIR — it would prepend sysroot to all .pc paths,
+# breaking deps installed outside the sysroot (i.e. in DEPS_PREFIX).
 export PKG_CONFIG_LIBDIR="${DEPS_PREFIX}/lib/pkgconfig:${DEPS_PREFIX}/lib64/pkgconfig:${DEPS_PREFIX}/share/pkgconfig"
-# pkg-config must not query host sysroot
-export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 
 # ------------------------------------------------------------------ #
 # Dependencies                                                        #
