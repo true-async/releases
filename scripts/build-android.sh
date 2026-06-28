@@ -70,7 +70,6 @@ if [[ -z "$NDK_DIR" ]]; then
         NDK_URL="https://dl.google.com/android/repository/android-ndk-r${NDK_VERSION%%.*}-linux.zip"
         wget -q "$NDK_URL" -O "$NDK_ZIP"
         unzip -q "$NDK_ZIP" -d /tmp
-        mv "/tmp/android-ndk-r${NDK_VERSION%%.*}" "$NDK_CACHE"
         rm -f "$NDK_ZIP"
     fi
 
