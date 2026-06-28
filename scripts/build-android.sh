@@ -42,6 +42,19 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
     exit 1
 fi
 
+# Install system dependencies early — jq is needed to parse config
+if command -v apt-get &>/dev/null; then
+    sudo apt-get update -qq 2>/dev/null || apt-get update -qq
+    sudo apt-get install -y --no-install-recommends \
+        autoconf automake libtool make bison re2c pkg-config \
+        wget curl unzip zip xz-utils cmake ninja-build \
+        jq git ca-certificates python3 2>/dev/null || \
+    apt-get install -y --no-install-recommends \
+        autoconf automake libtool make bison re2c pkg-config \
+        wget curl unzip zip xz-utils cmake ninja-build \
+        jq git ca-certificates python3
+fi
+
 API_LEVEL="${API_LEVEL:-$(jq -r '.android.api_level' "$CONFIG_FILE")}"
 NDK_VERSION=$(jq -r '.android.ndk_version' "$CONFIG_FILE")
 PHP_SRC_REPO=$(jq -r '.php_src.repo' "$CONFIG_FILE")
@@ -64,13 +77,17 @@ echo "Output:    $OUTPUT_DIR"
 if [[ -z "$NDK_DIR" ]]; then
     NDK_CACHE="/tmp/android-ndk-r${NDK_VERSION%%.*}"
 
-    if [[ ! -d "$NDK_CACHE" ]]; then
+    NDK_MARKER="${NDK_CACHE}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+    if [[ ! -f "$NDK_MARKER" ]]; then
         echo "=== Downloading NDK $NDK_VERSION ==="
         NDK_ZIP="/tmp/android-ndk.zip"
         NDK_URL="https://dl.google.com/android/repository/android-ndk-r${NDK_VERSION%%.*}-linux.zip"
-        wget -q "$NDK_URL" -O "$NDK_ZIP"
-        unzip -q "$NDK_ZIP" -d /tmp
-        rm -f "$NDK_ZIP"
+        wget -q --show-progress "$NDK_URL" -O "$NDK_ZIP"
+        echo "=== Extracting NDK ==="
+        unzip -q "$NDK_ZIP" -d /tmp/ndk-extract
+        # NDK extracts as android-ndk-r27/ inside the zip
+        cp -a /tmp/ndk-extract/android-ndk-r${NDK_VERSION%%.*}/. "$NDK_CACHE/"
+        rm -rf /tmp/ndk-extract "$NDK_ZIP"
     fi
 
     NDK_DIR="$NDK_CACHE"
@@ -102,7 +119,8 @@ export LD="${TOOLCHAIN}/bin/ld"
 DEPS_PREFIX="/tmp/trueasync-android-deps-${ABI}"
 mkdir -p "$DEPS_PREFIX"
 
-export CFLAGS="-fPIC --sysroot=${SYSROOT} -D__ANDROID_API__=${API_LEVEL} -I${DEPS_PREFIX}/include"
+# aarch64-linux-android29-clang already defines __ANDROID_API__ — don't redefine it
+export CFLAGS="-fPIC --sysroot=${SYSROOT} -I${DEPS_PREFIX}/include"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="--sysroot=${SYSROOT} -L${DEPS_PREFIX}/lib"
 
@@ -115,11 +133,39 @@ export PKG_CONFIG_LIBDIR="${DEPS_PREFIX}/lib/pkgconfig:${DEPS_PREFIX}/lib64/pkgc
 # Dependencies                                                        #
 # ------------------------------------------------------------------ #
 
-echo "=== Installing build tools ==="
-sudo apt-get update -qq
-sudo apt-get install -y --no-install-recommends \
-    autoconf automake libtool bison re2c pkg-config \
-    wget unzip cmake ninja-build jq
+echo "=== Build tools ready ==="
+
+build_libiconv() {
+    local VERSION="1.17"
+    [[ -f "${DEPS_PREFIX}/lib/libiconv.a" ]] && return
+    echo "--- libiconv ${VERSION} ---"
+    wget -q "https://ftpmirror.gnu.org/gnu/libiconv/libiconv-${VERSION}.tar.gz" -O /tmp/libiconv.tar.gz \
+        || wget -q "https://ftp.gnu.org/gnu/libiconv/libiconv-${VERSION}.tar.gz" -O /tmp/libiconv.tar.gz
+    tar -xf /tmp/libiconv.tar.gz -C /tmp
+    cd "/tmp/libiconv-${VERSION}"
+    ./configure \
+        --host="$TRIPLE" \
+        --prefix="$DEPS_PREFIX" \
+        --enable-static --disable-shared \
+        --disable-nls
+    make -j"$JOBS" && make install
+    cd -
+}
+
+build_oniguruma() {
+    local VERSION="6.9.9"
+    [[ -f "${DEPS_PREFIX}/lib/libonig.a" ]] && return
+    echo "--- oniguruma ${VERSION} ---"
+    wget -q "https://github.com/kkos/oniguruma/releases/download/v${VERSION}/onig-${VERSION}.tar.gz" -O /tmp/onig.tar.gz
+    tar -xf /tmp/onig.tar.gz -C /tmp
+    cd "/tmp/onig-${VERSION}"
+    ./configure \
+        --host="$TRIPLE" \
+        --prefix="$DEPS_PREFIX" \
+        --enable-static --disable-shared
+    make -j"$JOBS" && make install
+    cd -
+}
 
 build_zlib() {
     local VERSION="1.3.1"
@@ -227,6 +273,7 @@ build_curl() {
     cd -
 }
 
+build_oniguruma
 build_zlib
 build_openssl
 build_libxml2
@@ -258,14 +305,24 @@ fi
 
 echo "=== Building PHP for Android ${ABI} ==="
 cd "$BUILD_DIR"
+
+# Patch Android-incompatible POSIX calls before buildconf
+# getdtablesize() is not in Android Bionic — use sysconf(_SC_OPEN_MAX) instead
+sed -i 's/dtablesize = getdtablesize();/dtablesize = (int)sysconf(_SC_OPEN_MAX);/' \
+    ext/standard/php_fopen_wrapper.c
+
 ./buildconf --force
 
 INSTALL_PREFIX="${OUTPUT_DIR}/php-${ABI}"
 
+# Merge our static overrides with any previously cached values
+CACHE_TMP="$(mktemp /tmp/android-php-cache.XXXXXX)"
+cat "${SCRIPT_DIR}/android-cross.cache" > "$CACHE_TMP"
+
 ./configure \
     --host="$TRIPLE" \
     --prefix="$INSTALL_PREFIX" \
-    --cache-file="${SCRIPT_DIR}/android-cross.cache" \
+    --cache-file="$CACHE_TMP" \
     --with-libxml="${DEPS_PREFIX}" \
     --with-openssl="${DEPS_PREFIX}" \
     --with-sqlite3="${DEPS_PREFIX}" \
@@ -274,6 +331,24 @@ INSTALL_PREFIX="${OUTPUT_DIR}/php-${ABI}"
     --with-zlib \
     $COMMON_FLAGS \
     $ANDROID_FLAGS
+
+# Patch config.h after configure: disable resolver functions that exist as
+# private __res_* symbols in Android Bionic but lack the required resolv.h types.
+echo "=== Patching config headers for Android DNS ==="
+CONFIG_HEADERS=$(find . -maxdepth 3 -name "*.h" | xargs grep -l "HAVE_RES_NSEARCH" 2>/dev/null || true)
+echo "Found in: ${CONFIG_HEADERS:-none}"
+for cfg in $CONFIG_HEADERS; do
+    for sym in HAVE_RES_NSEARCH HAVE___RES_NSEARCH \
+               HAVE_RES_NDESTROY HAVE___RES_NDESTROY \
+               HAVE_RES_SEARCH HAVE___RES_SEARCH \
+               HAVE_RES_INIT HAVE___RES_INIT \
+               HAVE_DN_SKIPNAME HAVE___DN_SKIPNAME \
+               HAVE_DN_EXPAND HAVE___DN_EXPAND \
+               HAVE_GETDTABLESIZE; do
+        sed -i "s/^#define ${sym} 1$/\/* Android: ${sym} disabled *\//" "$cfg"
+    done
+    echo "Patched: $cfg"
+done
 
 make -j"$JOBS"
 make install INSTALL_ROOT="${OUTPUT_DIR}/staging-${ABI}"

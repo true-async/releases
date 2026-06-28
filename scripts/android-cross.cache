@@ -2,14 +2,35 @@
 # Overrides autoconf host-based checks that give wrong results when
 # the target is Android Bionic but the build host is Linux x86_64.
 
-# DNS resolver — not in Bionic (res_n* API only via __res_n* and not exported)
-ac_cv_header_resolv_h=no
+# iconv — tell configure iconv is NOT in a separate libiconv.
+# We use --without-iconv so configure never even checks.
+ac_cv_func_iconv=no
+ac_cv_func_iconv_open=no
+ac_cv_lib_iconv_iconv=no
+ac_cv_lib_iconv_libiconv=no
+
+# DNS resolver — Bionic has __res_n* but php_dns.h maps res_n* directly.
+# Disable all resolver function detection to keep HAVE_DNS_SEARCH_FUNC unset.
 ac_cv_func_res_nsearch=no
-ac_cv_func_res_nquery=no
-ac_cv_func_res_nsearch_n=no
-ac_cv_func_res_n_init=no
-ac_cv_func_dn_skipname=no
+ac_cv_func___res_nsearch=no
+ac_cv_lib_resolv_res_nsearch=no
+ac_cv_lib_resolv___res_nsearch=no
+ac_cv_func_res_ndestroy=no
+ac_cv_func___res_ndestroy=no
+ac_cv_func_res_ninit=no
+ac_cv_func___res_ninit=no
 ac_cv_func_res_nclose=no
+ac_cv_func___res_nclose=no
+ac_cv_func_dns_search=no
+ac_cv_func___dns_search=no
+ac_cv_lib_resolv_dns_search=no
+ac_cv_lib_resolv___dns_search=no
+ac_cv_func_dn_skipname=no
+ac_cv_func___dn_skipname=no
+ac_cv_func_dn_expand=no
+ac_cv_func___dn_expand=no
+ac_cv_header_resolv_h=no
+ac_cv_header_dns_h=no
 
 # sys/sysctl.h — removed in Android NDK r21+
 ac_cv_header_sys_sysctl_h=no
