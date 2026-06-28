@@ -114,7 +114,8 @@
       "--with-sqlite3",
       "--with-openssl",
       "--with-curl",
-      "--with-zlib"
+      "--with-zlib",
+      "--without-iconv"
     ]
   },
   "android": {
