@@ -43,7 +43,9 @@ jobs:
     outputs:
       version: ${{ steps.read.outputs.version }}
       php_version: ${{ steps.read.outputs.php_version }}
+      php_src_repo: ${{ steps.read.outputs.php_src_repo }}
       php_src_branch: ${{ steps.read.outputs.php_src_branch }}
+      async_repo: ${{ steps.read.outputs.async_repo }}
       async_branch: ${{ steps.read.outputs.async_branch }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
     steps:
@@ -53,7 +55,9 @@ jobs:
         id: read
         run: |
           echo "php_version=$(jq -r '.php_version' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "php_src_repo=$(jq -r '.php_src.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "php_src_branch=$(jq -r '.php_src.branch' build-config.json)" >> "$GITHUB_OUTPUT"
+          echo "async_repo=$(jq -r '.extensions.async.repo' build-config.json)" >> "$GITHUB_OUTPUT"
           echo "async_branch=$(jq -r '.extensions.async.branch' build-config.json)" >> "$GITHUB_OUTPUT"
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
@@ -172,6 +176,159 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: static-${{ matrix.name }}
+          path: ${{ steps.pkg.outputs.file }}
+
+      - name: Publish to release
+        if: ${{ github.event_name == 'push' && !inputs.test_only }}
+        uses: softprops/action-gh-release@v3
+        with:
+          prerelease: ${{ needs.config.outputs.is_prerelease == 'true' }}
+          tag_name: ${{ github.ref_name }}
+          files: ${{ steps.pkg.outputs.file }}
+
+  # ---------------------------------------------------------------------------
+  # Windows x86_64 static CLI build (MSVC / PHP SDK)
+  # ---------------------------------------------------------------------------
+  build-windows-static:
+    name: "Static (windows-x86_64)"
+    needs: config
+    runs-on: windows-2025-vs2026
+    env:
+      PHP_BUILD_CACHE_BASE_DIR: C:\build-cache
+      PHP_BUILD_OBJ_DIR: C:\obj
+      PHP_BUILD_CACHE_SDK_DIR: C:\build-cache\sdk
+      PHP_BUILD_SDK_BRANCH: php-sdk-2.7.1
+      PHP_BUILD_CRT: vs18
+      PLATFORM: x64
+      THREAD_SAFE: "1"
+
+    steps:
+      - name: git config
+        run: git config --global core.autocrlf false && git config --global core.eol lf
+
+      - uses: actions/checkout@v7
+
+      - name: Checkout php-src
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.config.outputs.php_src_repo }}
+          ref: ${{ needs.config.outputs.php_src_branch }}
+          path: php-src
+
+      - name: Checkout ext/async
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.config.outputs.async_repo }}
+          ref: ${{ needs.config.outputs.async_branch }}
+          path: async
+
+      - name: Copy async extension to ext/async
+        shell: cmd
+        run: |
+          if not exist php-src\ext\async mkdir php-src\ext\async
+          xcopy /E /I /H /Y async php-src\ext\async
+
+      - name: Setup LibUV
+        shell: powershell
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: C:\vcpkg-cache
+        run: |
+          choco install cmake ninja -y --no-progress | Out-Null
+          if (!(Test-Path "C:\vcpkg")) {
+            git clone --depth 1 --branch 2025.04.09 https://github.com/Microsoft/vcpkg.git C:\vcpkg
+            C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+          }
+          New-Item -ItemType Directory -Force -Path C:\vcpkg-cache | Out-Null
+          C:\vcpkg\vcpkg.exe install libuv:x64-windows-static-md
+
+      - name: Setup PHP SDK and download deps
+        shell: cmd
+        run: |
+          if not exist "%PHP_BUILD_CACHE_BASE_DIR%" mkdir "%PHP_BUILD_CACHE_BASE_DIR%"
+          if not exist "%PHP_BUILD_OBJ_DIR%" mkdir "%PHP_BUILD_OBJ_DIR%"
+          git clone --branch %PHP_BUILD_SDK_BRANCH% --depth 1 https://github.com/php/php-sdk-binary-tools.git "%PHP_BUILD_CACHE_SDK_DIR%"
+
+          cd php-src
+          for /f "usebackq tokens=3" %%i in (`findstr PHP_MAJOR_VERSION main\php_version.h`) do set BRANCH=%%i
+          for /f "usebackq tokens=3" %%i in (`findstr PHP_MINOR_VERSION main\php_version.h`) do set BRANCH=%BRANCH%.%%i
+          echo BRANCH=%BRANCH%>> %GITHUB_ENV%
+
+          set DEPS_DIR=%PHP_BUILD_CACHE_BASE_DIR%\deps-%BRANCH%-%PHP_BUILD_CRT%-%PLATFORM%
+          echo DEPS_DIR=%DEPS_DIR%>> %GITHUB_ENV%
+
+          set SDK_RUNNER=%PHP_BUILD_CACHE_SDK_DIR%\phpsdk-%PHP_BUILD_CRT%-%PLATFORM%.bat
+
+          > %GITHUB_WORKSPACE%\task_deps.bat echo @echo off
+          >> %GITHUB_WORKSPACE%\task_deps.bat echo phpsdk_deps --update --no-backup --branch %BRANCH% --stability staging --deps %DEPS_DIR% --crt %PHP_BUILD_CRT%
+          >> %GITHUB_WORKSPACE%\task_deps.bat echo if %%errorlevel%% neq 0 exit /b 3
+          cmd /c %SDK_RUNNER% -t %GITHUB_WORKSPACE%\task_deps.bat
+          if %errorlevel% neq 0 exit /b %errorlevel%
+
+          if not exist "%DEPS_DIR%\include\libuv" mkdir "%DEPS_DIR%\include\libuv"
+          if not exist "%DEPS_DIR%\lib" mkdir "%DEPS_DIR%\lib"
+          if not exist "%DEPS_DIR%\bin" mkdir "%DEPS_DIR%\bin"
+          copy "C:\vcpkg\installed\x64-windows-static-md\include\uv.h" "%DEPS_DIR%\include\libuv\uv.h"
+          xcopy /E /I /H /Y "C:\vcpkg\installed\x64-windows-static-md\include\uv" "%DEPS_DIR%\include\libuv\uv\"
+          copy "C:\vcpkg\installed\x64-windows-static-md\lib\libuv.lib" "%DEPS_DIR%\lib\libuv.lib"
+
+      - name: Build PHP CLI
+        shell: pwsh
+        run: |
+          @(
+            "@echo off",
+            "cd /d $($env:GITHUB_WORKSPACE)\php-src",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call buildconf.bat --force",
+            "if %errorlevel% neq 0 exit /b 3",
+            "call configure.bat --enable-snapshot-build --disable-debug-pack --enable-cli --disable-cgi --disable-phpdbg --enable-embed --enable-async --enable-object-out-dir=%PHP_BUILD_OBJ_DIR% --with-php-build=%DEPS_DIR%",
+            "if %errorlevel% neq 0 exit /b 3",
+            "nmake /NOLOGO",
+            "if %errorlevel% neq 0 exit /b 3",
+            "exit /b 0"
+          ) | Set-Content -Path "$env:GITHUB_WORKSPACE\task_build.bat" -Encoding ASCII
+          $sdk = "$env:PHP_BUILD_CACHE_SDK_DIR\phpsdk-$env:PHP_BUILD_CRT-$env:PLATFORM.bat"
+          cmd /c "$sdk" -t "$env:GITHUB_WORKSPACE\task_build.bat"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package
+        id: pkg
+        shell: pwsh
+        run: |
+          $version    = "${{ needs.config.outputs.version }}"
+          $phpVersion = "${{ needs.config.outputs.php_version }}"
+          $buildDir   = "$env:PHP_BUILD_OBJ_DIR\Release_TS"
+          $pkgName    = "php-trueasync-${version}-php${phpVersion}-windows-x86_64"
+          $stageDir   = "$env:GITHUB_WORKSPACE\stage-win"
+          New-Item -ItemType Directory -Force -Path "$stageDir\ext" | Out-Null
+
+          # php.exe and dep DLLs (not php_*.dll extensions)
+          $extNames = (Get-ChildItem $buildDir -Filter "php_*.dll").Name
+          Get-ChildItem $buildDir -Filter "*.exe" | Copy-Item -Destination $stageDir -Force
+          Get-ChildItem $buildDir -Filter "*.dll" |
+            Where-Object { $_.Name -notin $extNames } |
+            Copy-Item -Destination $stageDir -Force
+          Get-ChildItem $buildDir -Filter "php_*.dll" |
+            Copy-Item -Destination "$stageDir\ext" -Force
+          if (Test-Path "$env:DEPS_DIR\bin\uv.dll") {
+            Copy-Item "$env:DEPS_DIR\bin\uv.dll" $stageDir -Force
+          }
+
+          $devIni = "$env:GITHUB_WORKSPACE\php-src\php.ini-development"
+          if (Test-Path $devIni) {
+            Copy-Item $devIni "$stageDir\php.ini" -Force
+            Add-Content "$stageDir\php.ini" "`nextension_dir = `"ext`""
+          }
+
+          $archive = "${pkgName}.zip"
+          Compress-Archive -Path "$stageDir\*" -DestinationPath "$env:GITHUB_WORKSPACE\$archive" -Force
+          "file=$archive" >> $env:GITHUB_OUTPUT
+          Write-Host "Packaged: $archive"
+          Get-ChildItem $stageDir | Format-Table Name, @{N='Size';E={'{0:N0}' -f $_.Length}}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: static-windows-x86_64
           path: ${{ steps.pkg.outputs.file }}
 
       - name: Publish to release
