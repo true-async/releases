@@ -121,10 +121,10 @@ build_zlib() {
     local VERSION="1.3.1"
     [[ -f "${DEPS_PREFIX}/lib/libz.a" ]] && return
     echo "--- zlib ${VERSION} ---"
-    wget -q "https://zlib.net/zlib-${VERSION}.tar.gz" -O /tmp/zlib.tar.gz
+    wget -q "https://github.com/madler/zlib/releases/download/v${VERSION}/zlib-${VERSION}.tar.gz" -O /tmp/zlib.tar.gz
     tar -xf /tmp/zlib.tar.gz -C /tmp
     cd "/tmp/zlib-${VERSION}"
-    ./configure --prefix="$DEPS_PREFIX" --static
+    CHOST="$TRIPLE" ./configure --prefix="$DEPS_PREFIX" --static
     make -j"$JOBS" && make install
     cd -
 }
