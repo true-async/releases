@@ -99,15 +99,18 @@ export STRIP="${TOOLCHAIN}/bin/llvm-strip"
 export NM="${TOOLCHAIN}/bin/llvm-nm"
 export LD="${TOOLCHAIN}/bin/ld"
 
-export CFLAGS="-fPIC --sysroot=${SYSROOT} -D__ANDROID_API__=${API_LEVEL}"
-export CXXFLAGS="$CFLAGS"
-export LDFLAGS="--sysroot=${SYSROOT}"
-
 DEPS_PREFIX="/tmp/trueasync-android-deps-${ABI}"
 mkdir -p "$DEPS_PREFIX"
 
-export PKG_CONFIG_LIBDIR="${DEPS_PREFIX}/lib/pkgconfig"
-export PKG_CONFIG_PATH="${DEPS_PREFIX}/lib/pkgconfig"
+export CFLAGS="-fPIC --sysroot=${SYSROOT} -D__ANDROID_API__=${API_LEVEL} -I${DEPS_PREFIX}/include"
+export CXXFLAGS="$CFLAGS"
+export LDFLAGS="--sysroot=${SYSROOT} -L${DEPS_PREFIX}/lib"
+
+# Replace (not prepend) so cross-compiled .pc files are the only ones found.
+# Cover lib, lib64, share variants since cmake target may vary.
+export PKG_CONFIG_LIBDIR="${DEPS_PREFIX}/lib/pkgconfig:${DEPS_PREFIX}/lib64/pkgconfig:${DEPS_PREFIX}/share/pkgconfig"
+# pkg-config must not query host sysroot
+export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
 
 # ------------------------------------------------------------------ #
 # Dependencies                                                        #
@@ -198,6 +201,7 @@ build_libuv() {
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=OFF \
         -DCMAKE_INSTALL_PREFIX="$DEPS_PREFIX" \
+        -DCMAKE_INSTALL_LIBDIR=lib \
         -G Ninja
     ninja -j"$JOBS" && ninja install
     cd -
@@ -266,7 +270,6 @@ INSTALL_PREFIX="${OUTPUT_DIR}/php-${ABI}"
     --with-pdo-sqlite="${DEPS_PREFIX}" \
     --with-curl="${DEPS_PREFIX}" \
     --with-zlib \
-    --with-libuv="${DEPS_PREFIX}" \
     $COMMON_FLAGS \
     $ANDROID_FLAGS
 
