@@ -115,7 +115,8 @@
       "--with-openssl",
       "--with-curl",
       "--with-zlib",
-      "--without-iconv"
+      "--without-iconv",
+      "--disable-mbregex"
     ]
   },
   "android": {
