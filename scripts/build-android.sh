@@ -265,6 +265,7 @@ INSTALL_PREFIX="${OUTPUT_DIR}/php-${ABI}"
 ./configure \
     --host="$TRIPLE" \
     --prefix="$INSTALL_PREFIX" \
+    --cache-file="${SCRIPT_DIR}/android-cross.cache" \
     --with-libxml="${DEPS_PREFIX}" \
     --with-openssl="${DEPS_PREFIX}" \
     --with-sqlite3="${DEPS_PREFIX}" \
