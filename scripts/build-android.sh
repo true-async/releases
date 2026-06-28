@@ -199,6 +199,8 @@ build_libuv() {
         -DANDROID_PLATFORM="android-${API_LEVEL}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=OFF \
+        -DLIBUV_BUILD_TESTS=OFF \
+        -DLIBUV_BUILD_BENCHMARKS=OFF \
         -DCMAKE_INSTALL_PREFIX="$DEPS_PREFIX" \
         -DCMAKE_INSTALL_LIBDIR=lib \
         -G Ninja
