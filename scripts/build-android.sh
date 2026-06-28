@@ -89,6 +89,8 @@ TOOLCHAIN="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64"
 SYSROOT="${TOOLCHAIN}/sysroot"
 API_TRIPLE="${TRIPLE}${API_LEVEL}"
 
+export PATH="${TOOLCHAIN}/bin:${PATH}"
+
 export CC="${TOOLCHAIN}/bin/${API_TRIPLE}-clang"
 export CXX="${TOOLCHAIN}/bin/${API_TRIPLE}-clang++"
 export AR="${TOOLCHAIN}/bin/llvm-ar"
