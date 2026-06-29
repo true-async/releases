@@ -117,7 +117,8 @@
       "--with-zlib",
       "--without-iconv",
       "--disable-mbregex",
-      "--disable-opcache"
+      "--disable-opcache",
+      "--disable-zend-signals"
     ]
   },
   "android": {
