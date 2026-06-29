@@ -311,10 +311,19 @@ cd "$BUILD_DIR"
 sed -i 's/dtablesize = getdtablesize();/dtablesize = (int)sysconf(_SC_OPEN_MAX);/' \
     ext/standard/php_fopen_wrapper.c
 
-# Android: TSRM/TSRM.h uses __PIC__ to select __attribute__((tls_model("initial-exec")))
-# IE TLS model is rejected by bionic linker when the .so is loaded via dlopen.
-# Strip the attribute so plain __thread is used; -femulated-tls converts it to pthread-based TLS.
-sed -i 's/__attribute__((tls_model("initial-exec")))//' TSRM/TSRM.h
+# Android: TSRM uses IE TLS in two places that break dlopen in Bionic:
+# 1. TSRM/TSRM.h: __PIC__ branch sets TSRM_TLS_MODEL_ATTR=initial-exec + defines TSRM_TLS_MODEL_INITIAL_EXEC.
+#    Fix: inject __ANDROID__ into the first condition so the safe DEFAULT branch is taken.
+# 2. TSRM/TSRM.c: x86_64 and i386 inline-asm blocks hardcode @gottpoff/@ntpoff regardless of the macro.
+#    Fix: add !defined(__ANDROID__) to their #elif conditions so those blocks are skipped on Android.
+# Result: tsrm_get_offset() returns 0 on Android (JIT fast-path disabled, PHP still works),
+# and _tsrm_ls_cache is plain __thread, converted to emulated TLS by -femulated-tls.
+sed -i \
+    's/#if !__has_attribute(tls_model) || defined(__FreeBSD__)/#if !__has_attribute(tls_model) || defined(__ANDROID__) || defined(__FreeBSD__)/' \
+    TSRM/TSRM.h
+sed -i \
+    's/!defined(__HAIKU__) && !defined(__CYGWIN__)$/\!defined(__HAIKU__) \&\& !defined(__CYGWIN__) \&\& !defined(__ANDROID__)/' \
+    TSRM/TSRM.c
 
 ./buildconf --force
 
