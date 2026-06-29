@@ -350,6 +350,16 @@ for cfg in $CONFIG_HEADERS; do
     echo "Patched: $cfg"
 done
 
+# Patch: disable IE TLS attribute so tsrm_ls_cache works in dlopen'd .so on Android.
+# HAVE_ATTRIBUTE_TLS_MODEL causes TSRM_TLS to expand to __thread __attribute__((tls_model("initial-exec")))
+# which Android bionic rejects for dlopen. Without this define, TSRM_TLS = plain __thread,
+# compatible with -femulated-tls which converts it to pthread-based emulated TLS.
+echo "=== Patching HAVE_ATTRIBUTE_TLS_MODEL for Android dlopen ==="
+find . -maxdepth 3 -name "*.h" | xargs grep -l "HAVE_ATTRIBUTE_TLS_MODEL" 2>/dev/null | while read cfg; do
+    sed -i 's/^#define HAVE_ATTRIBUTE_TLS_MODEL 1$/\/* Android: disabled - IE TLS breaks dlopen *\//' "$cfg"
+    echo "Patched: $cfg"
+done
+
 make -j"$JOBS"
 make install INSTALL_ROOT="${OUTPUT_DIR}/staging-${ABI}"
 
