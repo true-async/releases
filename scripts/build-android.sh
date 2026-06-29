@@ -311,6 +311,11 @@ cd "$BUILD_DIR"
 sed -i 's/dtablesize = getdtablesize();/dtablesize = (int)sysconf(_SC_OPEN_MAX);/' \
     ext/standard/php_fopen_wrapper.c
 
+# Android: TSRM/TSRM.h uses __PIC__ to select __attribute__((tls_model("initial-exec")))
+# IE TLS model is rejected by bionic linker when the .so is loaded via dlopen.
+# Strip the attribute so plain __thread is used; -femulated-tls converts it to pthread-based TLS.
+sed -i 's/__attribute__((tls_model("initial-exec")))//' TSRM/TSRM.h
+
 ./buildconf --force
 
 INSTALL_PREFIX="${OUTPUT_DIR}/php-${ABI}"
@@ -350,17 +355,6 @@ for cfg in $CONFIG_HEADERS; do
     echo "Patched: $cfg"
 done
 
-# Patch: disable IE TLS attribute so tsrm_ls_cache works in dlopen'd .so on Android.
-# HAVE_ATTRIBUTE_TLS_MODEL causes TSRM_TLS to expand to __thread __attribute__((tls_model("initial-exec")))
-# which Android bionic rejects for dlopen. Without this define, TSRM_TLS = plain __thread,
-# compatible with -femulated-tls which converts it to pthread-based emulated TLS.
-echo "=== Patching HAVE_ATTRIBUTE_TLS_MODEL for Android dlopen ==="
-for cfg in main/php_config.h Zend/zend_config.h; do
-    if [[ -f "$cfg" ]] && grep -q "HAVE_ATTRIBUTE_TLS_MODEL" "$cfg"; then
-        sed -i 's/^#define HAVE_ATTRIBUTE_TLS_MODEL 1$/\/* Android: disabled - IE TLS breaks dlopen *\//' "$cfg"
-        echo "Patched: $cfg"
-    fi
-done
 
 make -j"$JOBS"
 make install INSTALL_ROOT="${OUTPUT_DIR}/staging-${ABI}"
