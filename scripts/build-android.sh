@@ -120,7 +120,7 @@ DEPS_PREFIX="/tmp/trueasync-android-deps-${ABI}"
 mkdir -p "$DEPS_PREFIX"
 
 # aarch64-linux-android29-clang already defines __ANDROID_API__ — don't redefine it
-export CFLAGS="-fPIC --sysroot=${SYSROOT} -I${DEPS_PREFIX}/include"
+export CFLAGS="-fPIC -ftls-model=global-dynamic --sysroot=${SYSROOT} -I${DEPS_PREFIX}/include"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="--sysroot=${SYSROOT} -L${DEPS_PREFIX}/lib"
 
