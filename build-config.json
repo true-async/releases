@@ -116,7 +116,8 @@
       "--with-curl",
       "--with-zlib",
       "--without-iconv",
-      "--disable-mbregex"
+      "--disable-mbregex",
+      "--disable-opcache"
     ]
   },
   "android": {
