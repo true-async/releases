@@ -355,9 +355,11 @@ done
 # which Android bionic rejects for dlopen. Without this define, TSRM_TLS = plain __thread,
 # compatible with -femulated-tls which converts it to pthread-based emulated TLS.
 echo "=== Patching HAVE_ATTRIBUTE_TLS_MODEL for Android dlopen ==="
-find . -maxdepth 3 -name "*.h" | xargs grep -l "HAVE_ATTRIBUTE_TLS_MODEL" 2>/dev/null | while read cfg; do
-    sed -i 's/^#define HAVE_ATTRIBUTE_TLS_MODEL 1$/\/* Android: disabled - IE TLS breaks dlopen *\//' "$cfg"
-    echo "Patched: $cfg"
+for cfg in main/php_config.h Zend/zend_config.h; do
+    if [[ -f "$cfg" ]] && grep -q "HAVE_ATTRIBUTE_TLS_MODEL" "$cfg"; then
+        sed -i 's/^#define HAVE_ATTRIBUTE_TLS_MODEL 1$/\/* Android: disabled - IE TLS breaks dlopen *\//' "$cfg"
+        echo "Patched: $cfg"
+    fi
 done
 
 make -j"$JOBS"
