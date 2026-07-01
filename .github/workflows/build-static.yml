@@ -168,6 +168,10 @@ jobs:
           tail -150 log/php-src.config.log 2>/dev/null || true
           echo "===== spc.shell.log (tail) ====="
           tail -100 log/spc.shell.log 2>/dev/null || true
+          echo "===== main/internal_functions_cli.c (generated) ====="
+          cat source/php-src/main/internal_functions_cli.c 2>/dev/null || true
+          echo "===== main/internal_functions.c (generated) ====="
+          cat source/php-src/main/internal_functions.c 2>/dev/null || true
 
       - name: Verify binary
         working-directory: spc
