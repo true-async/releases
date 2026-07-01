@@ -13,6 +13,9 @@ on:
         type: choice
         options: [arm64-v8a, x86_64, both]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
