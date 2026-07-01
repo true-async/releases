@@ -478,6 +478,7 @@ install_dependencies() {
         libpq
         nghttp2
         gettext
+        libiconv
     )
 
     info "Installing ${#pkgs[@]} Homebrew packages..."
