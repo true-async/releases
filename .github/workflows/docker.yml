@@ -221,12 +221,18 @@ jobs:
             multiarch: false
 
     steps:
-      - name: Download digests for ${{ matrix.variant }}
+      - name: Download amd64 digest for ${{ matrix.variant }}
         uses: actions/download-artifact@v8
         with:
-          path: /tmp/digests
-          pattern: digest-${{ matrix.variant }}-*
-          merge-multiple: false
+          name: digest-${{ matrix.variant }}-amd64
+          path: /tmp/digests/digest-${{ matrix.variant }}-amd64
+
+      - name: Download arm64 digest for ${{ matrix.variant }}
+        if: ${{ matrix.multiarch }}
+        uses: actions/download-artifact@v8
+        with:
+          name: digest-${{ matrix.variant }}-arm64
+          path: /tmp/digests/digest-${{ matrix.variant }}-arm64
 
       - name: Login to Docker Hub
         uses: docker/login-action@v4
