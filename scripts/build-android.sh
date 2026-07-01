@@ -306,10 +306,12 @@ fi
 echo "=== Building PHP for Android ${ABI} ==="
 cd "$BUILD_DIR"
 
-# Patch Android-incompatible POSIX calls before buildconf
-# getdtablesize() is not in Android Bionic — use sysconf(_SC_OPEN_MAX) instead
-sed -i 's/dtablesize = getdtablesize();/dtablesize = (int)sysconf(_SC_OPEN_MAX);/' \
-    ext/standard/php_fopen_wrapper.c
+# Patch Android-incompatible POSIX calls before buildconf (idempotent: skip if the
+# source already carries the Android branch, e.g. a --src-dir checkout that has it).
+# getdtablesize() is not in Android Bionic — use sysconf(_SC_OPEN_MAX) instead.
+grep -q 'sysconf(_SC_OPEN_MAX)' ext/standard/php_fopen_wrapper.c \
+    || sed -i 's/dtablesize = getdtablesize();/dtablesize = (int)sysconf(_SC_OPEN_MAX);/' \
+        ext/standard/php_fopen_wrapper.c
 
 # Android: TSRM uses IE TLS in two places that break dlopen in Bionic:
 # 1. TSRM/TSRM.h: __PIC__ branch sets TSRM_TLS_MODEL_ATTR=initial-exec + defines TSRM_TLS_MODEL_INITIAL_EXEC.
