@@ -1,0 +1,21 @@
+# Thin base image carrying the prebuilt PHP-for-Android artifacts.
+#
+# Purpose: let downstream builds (e.g. the native_bridge .so) `FROM` this image
+# and read the PHP static libs + headers straight from /opt/php-artifacts,
+# instead of downloading the zip from CI/releases.
+#
+# Deliberately tiny — the Android NDK is NOT baked in. The NDK is a stable,
+# public Google download (dl.google.com); re-hosting ~2-3 GB per PHP release
+# would waste registry bandwidth for no real gain. Consumers fetch it themselves.
+#
+# Published to Docker Hub as trueasync/php-android:<php-version> (and :latest).
+# The CI (build-android.yml, package-image job) copies the artifacts into the
+# build context before building this.
+FROM alpine:3.20
+
+# Both ABIs' artifacts (headers + static libs), as produced by scripts/build-android.sh.
+COPY out/android/trueasync-php-android-*.zip /opt/php-artifacts/
+
+LABEL org.opencontainers.image.title="TrueAsync PHP — Android artifacts" \
+      org.opencontainers.image.description="Prebuilt libphp.a + PHP headers for Android (arm64-v8a, x86_64). NDK not included." \
+      org.opencontainers.image.source="https://github.com/true-async/releases"

@@ -12,6 +12,11 @@ on:
         default: 'arm64-v8a'
         type: choice
         options: [arm64-v8a, x86_64, both]
+      test_only:
+        description: 'Build the Docker image without pushing to Docker Hub'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -21,7 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        abi: ${{ github.event_name == 'workflow_dispatch' && inputs.abi == 'both' && fromJson('["arm64-v8a","x86_64"]') || fromJson(format('["{0}"]', github.event_name == 'workflow_dispatch' && inputs.abi || 'arm64-v8a')) }}
+        # Tags (releases) and `abi: both` build both ABIs; a plain master push
+        # keeps the fast arm64-v8a default. Both ABIs are needed for the Docker
+        # image + a complete GitHub release.
+        abi: ${{ (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.abi == 'both')) && fromJson('["arm64-v8a","x86_64"]') || fromJson(format('["{0}"]', github.event_name == 'workflow_dispatch' && inputs.abi || 'arm64-v8a')) }}
 
     name: Android ${{ matrix.abi }}
 
@@ -61,6 +69,68 @@ jobs:
           name: trueasync-php-android-${{ matrix.abi }}
           path: out/android/trueasync-php-android-${{ matrix.abi }}.zip
           retention-days: 30
+
+  # Package the built artifacts into a thin Docker image (trueasync/php-android)
+  # so downstream projects (native-bridge) can `FROM` it instead of downloading
+  # the zip. Runs on tags (push) and on manual dispatch (push only if test_only=false).
+  package-image:
+    name: Docker image (trueasync/php-android)
+    needs: build
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download ABI artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: trueasync-php-android-*
+          merge-multiple: true
+          path: out/android
+
+      - name: Compute tags + push flag
+        id: meta
+        run: |
+          PHP_VER=$(jq -r '.php_version' build-config.json)
+          IMAGE="trueasync/php-android"
+          TAGS="${IMAGE}:php${PHP_VER},${IMAGE}:latest"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            TAGS="${TAGS},${IMAGE}:${VERSION}"
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ inputs.test_only }}" == "false" ]]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "=== artifacts in context ==="; ls -la out/android/ || true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        if: ${{ steps.meta.outputs.push == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build image (push if enabled)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.android
+          push: ${{ steps.meta.outputs.push == 'true' }}
+          load: ${{ steps.meta.outputs.push != 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+
+      - name: Verify image contents (build-only)
+        if: ${{ steps.meta.outputs.push != 'true' }}
+        run: |
+          FIRST=$(echo "${{ steps.meta.outputs.tags }}" | cut -d, -f1)
+          echo "=== /opt/php-artifacts in $FIRST ==="
+          docker run --rm "$FIRST" ls -la /opt/php-artifacts
 
   release:
     needs: build
