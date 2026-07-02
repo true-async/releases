@@ -28,8 +28,13 @@ env:
   # Extensions compiled into the static binary, close to build-config.json's
   # common set. intl is included; the fork patches PHP's snprintf macros so
   # ext-intl's C++ TUs compile under the zig libc++ toolchain.
+  #
+  # clickhouse is intentionally NOT here yet: true-async/php-clickhouse is a
+  # heavy C++17 extension (module clickhouse_async, bundled clickhouse-cpp
+  # submodule + cityhash/lz4/zstd/absl static libs) needing its own
+  # static-php-cli package integration. Add it back once that lands.
   EXTENSIONS: >-
-    async,server,redis,clickhouse,bcmath,calendar,ctype,curl,dom,exif,
+    async,server,redis,bcmath,calendar,ctype,curl,dom,exif,
     fileinfo,filter,ftp,gmp,iconv,intl,mbstring,mbregex,opcache,openssl,
     pcntl,pdo,pdo_mysql,pdo_pgsql,pdo_sqlite,pgsql,phar,posix,session,
     shmop,simplexml,soap,sockets,sqlite3,tokenizer,xml,xmlreader,
@@ -144,15 +149,36 @@ jobs:
       - name: Download sources
         working-directory: spc
         run: |
-          php bin/spc download \
-            --for-extensions "${{ steps.exts.outputs.list }}" \
-            --for-packages "php-micro" \
-            --custom-git "php-src:${{ needs.config.outputs.php_src_branch }}:https://github.com/true-async/php-src.git" \
-            --custom-git "ext-async:${{ needs.config.outputs.async_branch }}:https://github.com/true-async/php-async.git" \
-            --custom-git "ext-server:${{ needs.config.outputs.server_branch }}:https://github.com/${{ needs.config.outputs.server_repo }}.git" \
-            --custom-git "ext-redis:${{ needs.config.outputs.phpredis_branch }}:https://github.com/${{ needs.config.outputs.phpredis_repo }}.git" \
-            --custom-git "ext-clickhouse:${{ needs.config.outputs.clickhouse_branch }}:https://github.com/${{ needs.config.outputs.clickhouse_repo }}.git" \
-            --prefer-binary -P 4
+          # pecl.php.net downloads are flaky and a single failed artifact aborts
+          # the whole parallel batch. Retry a few times; spc reuses already
+          # downloaded artifacts and only re-fetches what is still missing. Drop
+          # to serial (-P 1) on later attempts to reduce pecl rate-limit hits.
+          attempt=1
+          max_attempts=4
+          while true; do
+            conc=$([ "$attempt" -le 2 ] && echo 4 || echo 1)
+            echo "::group::spc download (attempt $attempt/$max_attempts, -P $conc)"
+            if php bin/spc download \
+                --for-extensions "${{ steps.exts.outputs.list }}" \
+                --for-packages "php-micro" \
+                --custom-git "php-src:${{ needs.config.outputs.php_src_branch }}:https://github.com/true-async/php-src.git" \
+                --custom-git "ext-async:${{ needs.config.outputs.async_branch }}:https://github.com/true-async/php-async.git" \
+                --custom-git "ext-server:${{ needs.config.outputs.server_branch }}:https://github.com/${{ needs.config.outputs.server_repo }}.git" \
+                --custom-git "ext-redis:${{ needs.config.outputs.phpredis_branch }}:https://github.com/${{ needs.config.outputs.phpredis_repo }}.git" \
+                --prefer-binary -P "$conc"; then
+              echo "::endgroup::"
+              echo "spc download succeeded on attempt $attempt"
+              break
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "spc download failed after $max_attempts attempts" >&2
+              exit 1
+            fi
+            echo "spc download attempt $attempt failed; retrying in 15s..."
+            sleep 15
+            attempt=$((attempt + 1))
+          done
 
       - name: Build static CLI + micro (ZTS)
         working-directory: spc
@@ -177,7 +203,7 @@ jobs:
         working-directory: spc
         run: |
           ./buildroot/bin/php -v
-          ./buildroot/bin/php -m | grep -iE "async|redis|clickhouse"
+          ./buildroot/bin/php -m | grep -iE "async|redis"
           test -f buildroot/bin/micro.sfx && echo "micro.sfx: OK"
           if [ "${{ matrix.os }}" = "linux" ]; then ldd ./buildroot/bin/php || true; fi
 
