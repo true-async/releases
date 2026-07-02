@@ -246,7 +246,9 @@ ask_yesno() {
         printf "  ${BOLD}%s${NC} [%s] (default: %s): " "$prompt" "$hint" "$default_hint"
         read -r answer
         answer="${answer:-$default}"
-        case "${answer,,}" in
+        # Lowercase via tr for Bash 3.2 compatibility (macOS system bash lacks ${var,,})
+        answer=$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')
+        case "$answer" in
             y|yes) return 0 ;;
             n|no)  return 1 ;;
             *)     echo -e "  ${RED}Please answer y or n${NC}" ;;
@@ -269,13 +271,15 @@ run_wizard() {
     echo -e "  ${DIM}Configure your TrueAsync PHP build${NC}"
 
     # 1. Extensions
+    # ask_choice returns the selected index via exit code; the `|| ext_choice=$?`
+    # captures it without tripping set -e when the index is non-zero
+    local ext_choice=0
     ASK_CHOICE_DEFAULT=2 ask_choice "Which extensions to build?" \
         "Standard — async + core extensions" \
         "Standard + Xdebug — adds debugging support" \
         "Standard + FrankenPHP — adds Caddy-based async server" \
         "All — Xdebug + FrankenPHP" \
-        "Custom — choose manually"
-    local ext_choice=$?
+        "Custom — choose manually" || ext_choice=$?
 
     case $ext_choice in
         0) EXTENSIONS="standard"; NO_XDEBUG="true";  BUILD_FRANKENPHP="false" ;;
@@ -326,10 +330,10 @@ run_wizard() {
         warn "Existing PHP found in ${INSTALL_DIR}:"
         echo -e "  ${DIM}${existing_ver}${NC}"
         echo ""
+        local overwrite_choice=0
         ask_choice "What would you like to do?" \
             "Rebuild — remove and build fresh" \
-            "Cancel — keep existing installation"
-        local overwrite_choice=$?
+            "Cancel — keep existing installation" || overwrite_choice=$?
         case $overwrite_choice in
             1) info "Build cancelled."; exit 0 ;;
         esac

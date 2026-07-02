@@ -1,0 +1,23 @@
+name: Test Installer Wizard (bash 3.2)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'installer/build-macos.sh'
+      - 'installer/tests/**'
+      - '.github/workflows/test-installer-wizard.yml'
+
+jobs:
+  wizard-matrix:
+    runs-on: macos-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show system bash version
+        run: /bin/bash --version | head -1
+
+      - name: Run wizard choice matrix (mocked steps, real wizard, bash 3.2 via PTY)
+        run: bash installer/tests/run-wizard-cases.sh
