@@ -29,8 +29,12 @@ permissions:
 env:
   SPC_REPO: true-async/static-php-cli
   SPC_REF: true-async
+  # clickhouse temporarily excluded: true-async/php-clickhouse is a heavy C++17
+  # extension (module clickhouse_async, bundled clickhouse-cpp submodule +
+  # cityhash/lz4/zstd/absl static libs) that needs its own static-php-cli
+  # package integration. Tracked separately; re-add once integrated.
   EXTENSIONS: >-
-    async,server,redis,clickhouse,bcmath,calendar,ctype,curl,dom,exif,
+    async,server,redis,bcmath,calendar,ctype,curl,dom,exif,
     fileinfo,filter,ftp,gmp,iconv,intl,mbstring,mbregex,opcache,openssl,
     pcntl,pdo,pdo_mysql,pdo_pgsql,pdo_sqlite,pgsql,phar,posix,session,
     shmop,simplexml,soap,sockets,sqlite3,tokenizer,xml,xmlreader,
@@ -138,7 +142,6 @@ jobs:
                 --custom-git "ext-async:${{ needs.config.outputs.async_branch }}:https://github.com/true-async/php-async.git" \
                 --custom-git "ext-server:main:https://github.com/${{ needs.config.outputs.server_repo }}.git" \
                 --custom-git "ext-redis:true-async:https://github.com/${{ needs.config.outputs.phpredis_repo }}.git" \
-                --custom-git "ext-clickhouse:main:https://github.com/${{ needs.config.outputs.clickhouse_repo }}.git" \
                 --prefer-binary -P "$conc"; then
               echo "::endgroup::"
               echo "spc download succeeded on attempt $attempt"
@@ -175,7 +178,7 @@ jobs:
         working-directory: spc
         run: |
           ./buildroot/bin/php -v
-          ./buildroot/bin/php -m | grep -iE "async|redis|clickhouse"
+          ./buildroot/bin/php -m | grep -iE "async|redis"
           test -f buildroot/bin/micro.sfx && echo "micro.sfx: OK"
           if [ "${{ matrix.os }}" = "linux" ]; then ldd ./buildroot/bin/php || true; fi
 
