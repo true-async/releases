@@ -13,7 +13,7 @@
     },
     "server": {
       "repo": "true-async/server",
-      "branch": "v0.11.0"
+      "branch": "v0.11.1"
     },
     "xdebug": {
       "repo": "true-async/xdebug",
