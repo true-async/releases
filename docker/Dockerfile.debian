@@ -22,7 +22,9 @@ ARG DEBUG=false
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
+RUN echo 'Acquire::Retries "5"; Acquire::http::Timeout "30"; Acquire::https::Timeout "30";' \
+        > /etc/apt/apt.conf.d/80-retries \
+    && apt-get update && apt-get install -y \
     autoconf automake bison build-essential curl re2c git \
     cmake ninja-build wget dos2unix pkg-config perl \
     libxml2-dev libargon2-dev \
@@ -242,7 +244,9 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN echo 'Acquire::Retries "5"; Acquire::http::Timeout "30"; Acquire::https::Timeout "30";' \
+        > /etc/apt/apt.conf.d/80-retries \
+    && apt-get update && apt-get install -y --no-install-recommends \
     libxml2 libargon2-1 \
     libedit2 libreadline8 \
     libsodium23 libsqlite3-0 libonig5 libzip4 \
