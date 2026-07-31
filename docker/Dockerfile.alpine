@@ -46,7 +46,8 @@ RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-
     && git clone --depth 1 --branch ${ASYNC_BRANCH} ${ASYNC_REPO} /usr/src/php-src/ext/async \
     && git clone --depth 1 --branch ${XDEBUG_BRANCH} ${XDEBUG_REPO} /usr/src/xdebug \
     && git clone --depth 1 --branch ${SERVER_BRANCH} ${SERVER_REPO} /usr/src/server \
-    && git clone --depth 1 --branch ${PHPREDIS_BRANCH} ${PHPREDIS_REPO} /usr/src/phpredis \
+    && git clone --depth 1 --recurse-submodules --shallow-submodules \
+           --branch ${PHPREDIS_BRANCH} ${PHPREDIS_REPO} /usr/src/phpredis \
     && git clone --depth 1 --branch ${IGBINARY_BRANCH} ${IGBINARY_REPO} /usr/src/igbinary \
     && git clone --depth 1 --recurse-submodules --shallow-submodules \
            --branch ${CLICKHOUSE_BRANCH} ${CLICKHOUSE_REPO} /usr/src/clickhouse
@@ -155,6 +156,7 @@ RUN /usr/local/bin/phpize \
         --enable-redis-igbinary \
         --enable-redis-lz4 --with-liblz4 \
         --enable-redis-zstd --with-libzstd \
+        --enable-redis-lzf \
     && make -j"$(nproc)" \
     && make install
 
