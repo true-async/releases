@@ -18,6 +18,8 @@ ARG SERVER_REPO=https://github.com/true-async/server.git
 ARG SERVER_BRANCH=main
 ARG PHPREDIS_REPO=https://github.com/true-async/phpredis.git
 ARG PHPREDIS_BRANCH=true-async
+ARG IGBINARY_REPO=https://github.com/igbinary/igbinary.git
+ARG IGBINARY_BRANCH=master
 ARG CLICKHOUSE_REPO=https://github.com/true-async/php-clickhouse.git
 ARG CLICKHOUSE_BRANCH=v0.1.0
 ARG DEBUG=false
@@ -36,7 +38,8 @@ RUN apk add --no-cache \
     argon2-dev libffi-dev \
     net-snmp-dev enchant2-dev \
     gdbm-dev lmdb-dev \
-    libuv-dev dos2unix
+    libuv-dev dos2unix \
+    lz4-dev zstd-dev
 
 # Clone sources
 RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-src \
@@ -44,6 +47,7 @@ RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-
     && git clone --depth 1 --branch ${XDEBUG_BRANCH} ${XDEBUG_REPO} /usr/src/xdebug \
     && git clone --depth 1 --branch ${SERVER_BRANCH} ${SERVER_REPO} /usr/src/server \
     && git clone --depth 1 --branch ${PHPREDIS_BRANCH} ${PHPREDIS_REPO} /usr/src/phpredis \
+    && git clone --depth 1 --branch ${IGBINARY_BRANCH} ${IGBINARY_REPO} /usr/src/igbinary \
     && git clone --depth 1 --recurse-submodules --shallow-submodules \
            --branch ${CLICKHOUSE_BRANCH} ${CLICKHOUSE_REPO} /usr/src/clickhouse
 
@@ -137,10 +141,20 @@ RUN /usr/local/bin/phpize \
     && make -j"$(nproc)" \
     && make install
 
-# Build phpredis
+# Build igbinary first: phpredis needs its headers for the igbinary serializer
+WORKDIR /usr/src/igbinary
+RUN /usr/local/bin/phpize \
+    && ./configure --with-php-config=/usr/local/bin/php-config \
+    && make -j"$(nproc)" \
+    && make install
+
+# Build phpredis with the serializers and compressors real workloads ask for
 WORKDIR /usr/src/phpredis
 RUN /usr/local/bin/phpize \
     && ./configure --with-php-config=/usr/local/bin/php-config --enable-redis \
+        --enable-redis-igbinary \
+        --enable-redis-lz4 --with-liblz4 \
+        --enable-redis-zstd --with-libzstd \
     && make -j"$(nproc)" \
     && make install
 
@@ -170,6 +184,7 @@ RUN mkdir -p /etc/php.d \
     && echo "zend_extension=xdebug.so" > /etc/php.d/xdebug.ini \
     && echo "xdebug.mode=off" >> /etc/php.d/xdebug.ini \
     && echo "extension=true_async_server" > /etc/php.d/true_async_server.ini \
+    && echo "extension=igbinary" > /etc/php.d/igbinary.ini \
     && echo "extension=redis" > /etc/php.d/redis.ini \
     && echo "extension=clickhouse_async" > /etc/php.d/clickhouse_async.ini
 
@@ -194,6 +209,7 @@ RUN apk add --no-cache \
     net-snmp-libs enchant2 \
     gdbm lmdb \
     libstdc++ libgcc \
+    lz4-libs zstd-libs \
     ca-certificates \
     && addgroup -g 82 -S www-data 2>/dev/null || true \
     && adduser -u 82 -D -S -G www-data www-data 2>/dev/null || true

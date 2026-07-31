@@ -16,6 +16,8 @@ ARG SERVER_REPO=https://github.com/true-async/server.git
 ARG SERVER_BRANCH=main
 ARG PHPREDIS_REPO=https://github.com/true-async/phpredis.git
 ARG PHPREDIS_BRANCH=true-async
+ARG IGBINARY_REPO=https://github.com/igbinary/igbinary.git
+ARG IGBINARY_BRANCH=master
 ARG CLICKHOUSE_REPO=https://github.com/true-async/php-clickhouse.git
 ARG CLICKHOUSE_BRANCH=v0.1.0
 ARG DEBUG=false
@@ -35,6 +37,7 @@ RUN echo 'Acquire::Retries "5"; Acquire::http::Timeout "30"; Acquire::https::Tim
     libmysqlclient-dev libbz2-dev libenchant-2-dev \
     libffi-dev libgdbm-dev liblmdb-dev libsnmp-dev \
     libtidy-dev libxslt1-dev libicu-dev \
+    liblz4-dev libzstd-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # OpenSSL 3.5.0 — required for HTTP/3 QUIC API (ngtcp2 needs >= 3.5)
@@ -92,6 +95,7 @@ RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-
     && git clone --depth 1 --branch ${XDEBUG_BRANCH} ${XDEBUG_REPO} /usr/src/xdebug \
     && git clone --depth 1 --branch ${SERVER_BRANCH} ${SERVER_REPO} /usr/src/server \
     && git clone --depth 1 --branch ${PHPREDIS_BRANCH} ${PHPREDIS_REPO} /usr/src/phpredis \
+    && git clone --depth 1 --branch ${IGBINARY_BRANCH} ${IGBINARY_REPO} /usr/src/igbinary \
     && git clone --depth 1 --recurse-submodules --shallow-submodules \
            --branch ${CLICKHOUSE_BRANCH} ${CLICKHOUSE_REPO} /usr/src/clickhouse
 
@@ -191,10 +195,20 @@ RUN /usr/local/bin/phpize \
     && make -j"$(nproc)" \
     && make install
 
-# Build phpredis
+# Build igbinary first: phpredis needs its headers for the igbinary serializer
+WORKDIR /usr/src/igbinary
+RUN /usr/local/bin/phpize \
+    && ./configure --with-php-config=/usr/local/bin/php-config \
+    && make -j"$(nproc)" \
+    && make install
+
+# Build phpredis with the serializers and compressors real workloads ask for
 WORKDIR /usr/src/phpredis
 RUN /usr/local/bin/phpize \
     && ./configure --with-php-config=/usr/local/bin/php-config --enable-redis \
+        --enable-redis-igbinary \
+        --enable-redis-lz4 --with-liblz4 \
+        --enable-redis-zstd --with-libzstd \
     && make -j"$(nproc)" \
     && make install
 
@@ -238,6 +252,7 @@ opcache.jit_buffer_size=128M\n' > /etc/php.d/opcache.ini \
     && echo "zend_extension=xdebug.so" > /etc/php.d/xdebug.ini \
     && echo "xdebug.mode=off" >> /etc/php.d/xdebug.ini \
     && echo "extension=true_async_server" > /etc/php.d/true_async_server.ini \
+    && echo "extension=igbinary" > /etc/php.d/igbinary.ini \
     && echo "extension=redis" > /etc/php.d/redis.ini \
     && echo "extension=clickhouse_async" > /etc/php.d/clickhouse_async.ini
 
@@ -259,6 +274,7 @@ RUN echo 'Acquire::Retries "5"; Acquire::http::Timeout "30"; Acquire::https::Tim
     libmysqlclient21 libbz2-1.0 libenchant-2-2 \
     libffi8 libgdbm6 liblmdb0 libsnmp40 \
     libtidy5deb1 libxslt1.1 libicu74 \
+    liblz4-1 libzstd1 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
