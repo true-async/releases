@@ -161,7 +161,11 @@ RUN cmake -S third_party/clickhouse-cpp -B third_party/clickhouse-cpp/build \
     && make install
 
 # Minimal PHP config
+# Fibers and coroutines read error_reporting from the ini literal, not from the
+# runtime value: leaving it unset makes every coroutine start at 0 and swallow
+# warnings, so it is set explicitly here.
 RUN mkdir -p /etc/php.d \
+    && echo "error_reporting = E_ALL" > /etc/php.d/error-reporting.ini \
     && echo "opcache.enable_cli=1" > /etc/php.d/opcache.ini \
     && echo "zend_extension=xdebug.so" > /etc/php.d/xdebug.ini \
     && echo "xdebug.mode=off" >> /etc/php.d/xdebug.ini \

@@ -226,7 +226,11 @@ RUN ldconfig
 
 ENV PATH="/usr/local/bin:/usr/local/sbin:${PATH}"
 
+# Fibers and coroutines read error_reporting from the ini literal, not from the
+# runtime value: leaving it unset makes every coroutine start at 0 and swallow
+# warnings, so it is set explicitly here.
 RUN mkdir -p /etc/php.d /etc/caddy /config/caddy /data/caddy /app \
+    && echo "error_reporting = E_ALL" > /etc/php.d/error-reporting.ini \
     && printf '[opcache]\n\
 opcache.enable=1\n\
 opcache.enable_cli=1\n\
