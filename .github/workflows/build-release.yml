@@ -669,6 +669,32 @@ jobs:
             Copy-Item "$env:DEPS_DIR\bin\uv.dll" $stageDir -Force
           }
 
+          # ── MSVC runtime (local deployment) ───────────────────────────────────
+          # php.exe checks at startup that the loaded vcruntime140.dll is not
+          # older than the toolset it was linked with, and refuses to run when
+          # the machine carries an older redistributable. Shipping the CRT next
+          # to php.exe makes the application directory win the DLL search, so
+          # the build always meets its own CRT.
+          #
+          # Release only: a Debug build links /MDd against vcruntime140d.dll,
+          # which the Visual Studio licence does not allow to redistribute.
+          if ("${{ matrix.build_type }}" -eq "Release") {
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            $vsPath  = & $vswhere -latest -prerelease -products * -property installationPath
+            if (-not $vsPath) { Write-Error "Visual Studio installation not found"; exit 1 }
+
+            $crtDir = Get-ChildItem "$vsPath\VC\Redist\MSVC" -Directory -ErrorAction SilentlyContinue |
+                      Where-Object { [version]::TryParse($_.Name, [ref]$null) } |
+                      Sort-Object { [version]$_.Name } |
+                      ForEach-Object { Get-ChildItem "$($_.FullName)\x64" -Directory -Filter "Microsoft.VC*.CRT" -ErrorAction SilentlyContinue } |
+                      Select-Object -Last 1
+            if (-not $crtDir) { Write-Error "MSVC redistributable not found under $vsPath\VC\Redist\MSVC"; exit 1 }
+
+            Copy-Item "$($crtDir.FullName)\*.dll" $stageDir -Force
+            Write-Host "Added MSVC runtime from $($crtDir.FullName):"
+            Get-ChildItem "$($crtDir.FullName)\*.dll" | ForEach-Object { Write-Host "  $($_.Name)" }
+          }
+
           # ── Xdebug ────────────────────────────────────────────────────────────
           # phpize builds into xdebug\x64\<config>\ (not into $buildDir)
           $xdebugDll = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\xdebug" -Recurse `
