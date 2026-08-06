@@ -100,6 +100,11 @@ RUN git clone --depth 1 --branch ${PHP_SRC_BRANCH} ${PHP_SRC_REPO} /usr/src/php-
     && git clone --depth 1 --recurse-submodules --shallow-submodules \
            --branch ${CLICKHOUSE_BRANCH} ${CLICKHOUSE_REPO} /usr/src/clickhouse
 
+# igbinary still reads PG(unserialize_callback_func) as a C string; php-src
+# turned that global into a zend_string.
+COPY docker/patches/igbinary-unserialize-callback.patch /tmp/igbinary.patch
+RUN cd /usr/src/igbinary && patch -p1 < /tmp/igbinary.patch
+
 # Fix possible Windows line endings
 RUN dos2unix /usr/src/php-src/ext/async/config.m4
 
@@ -271,7 +276,7 @@ RUN echo 'Acquire::Retries "5"; Acquire::http::Timeout "30"; Acquire::https::Tim
     libxml2 libargon2-1 \
     libedit2 libreadline8 \
     libsodium23 libsqlite3-0 libonig5 libzip4 \
-    libpng16-16 libjpeg8 libwebp7 libfreetype6 \
+    libpng16-16 libjpeg8 libwebp7 libwebpdemux2 libwebpmux3 libfreetype6 \
     libgmp10 libldap2 libsasl2-2 libpq5 \
     libmysqlclient21 libbz2-1.0 libenchant-2-2 \
     libffi8 libgdbm6 liblmdb0 libsnmp40 \

@@ -22,7 +22,7 @@
     },
     "phpredis": {
       "repo": "true-async/phpredis",
-      "branch": "v0.8.0"
+      "branch": "v0.8.1"
     },
     "clickhouse": {
       "repo": "true-async/php-clickhouse",

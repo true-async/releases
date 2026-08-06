@@ -1,0 +1,37 @@
+--- a/src/php7/igbinary.c	2026-08-06 10:33:52.985784303 +0000
++++ b/src/php7/igbinary.c	2026-08-06 10:34:25.713776033 +0000
+@@ -3171,7 +3171,7 @@
+ 		zval user_func;
+ 		zval retval;
+ 		zval args[1];
+-		const char* user_func_name;
++		zend_string *user_func_name;
+ 
+ 		/* Try to find class directly */
+ 		if (EXPECTED((ce = zend_lookup_class(class_name)) != NULL)) {
+@@ -3181,14 +3181,14 @@
+ 
+ 		user_func_name = PG(unserialize_callback_func);
+ 		/* Check for unserialize callback */
+-		if ((user_func_name == NULL) || (user_func_name[0] == '\0')) {
++		if (user_func_name == NULL || ZSTR_LEN(user_func_name) == 0) {
+ 			incomplete_class = 1;
+ 			ce = PHP_IC_ENTRY;
+ 			break;
+ 		}
+ 
+ 		/* Call unserialize callback */
+-		ZVAL_STRING(&user_func, user_func_name);
++		ZVAL_STR_COPY(&user_func, user_func_name);
+ 		ZVAL_STR(&args[0], class_name);
+ 		if (call_user_function(CG(function_table), NULL, &user_func, &retval, 1, args) != SUCCESS) {
+ 			php_error_docref(NULL, E_WARNING, "defined (%s) but not found", Z_STRVAL(user_func));
+@@ -3210,7 +3210,7 @@
+ 		/* The callback function may have defined the class */
+ 		ce = zend_lookup_class(class_name);
+ 		if (!ce) {
+-			php_error_docref(NULL, E_WARNING, "Function %s() hasn't defined the class it was called for", PG(unserialize_callback_func));
++			php_error_docref(NULL, E_WARNING, "Function %s() hasn't defined the class it was called for", ZSTR_VAL(PG(unserialize_callback_func)));
+ 			incomplete_class = true;
+ 			ce = PHP_IC_ENTRY;
+ 		}
