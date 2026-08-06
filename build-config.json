@@ -3,7 +3,7 @@
   "php_is_latest": true,
   "php_src": {
     "repo": "true-async/php-src",
-    "branch": "php-8.6.0-trueasync-0.9.0"
+    "branch": "php-8.6.0-trueasync-0.9.1"
   },
   "extensions": {
     "async": {
@@ -31,7 +31,7 @@
   },
   "frankenphp": {
     "repo": "true-async/frankenphp",
-    "branch": "trueasync-0.7.0"
+    "branch": "trueasync-0.7.1"
   },
   "requirements": {
     "libuv": "1.52.1",
