@@ -210,7 +210,7 @@ RUN apk add --no-cache \
     libpq oniguruma libsodium \
     readline libbz2 \
     gmp icu-libs libxslt \
-    libjpeg-turbo libwebp freetype libpng \
+    libjpeg-turbo libwebp libwebpdemux libwebpmux freetype libpng \
     tidyhtml libldap \
     argon2-libs libffi \
     net-snmp-libs enchant2 \
