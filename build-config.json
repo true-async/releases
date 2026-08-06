@@ -91,7 +91,6 @@
     "android": [
       "--enable-embed=static",
       "--disable-phpdbg",
-      "--disable-cli",
       "--disable-cgi",
       "--without-readline",
       "--without-ldap",
