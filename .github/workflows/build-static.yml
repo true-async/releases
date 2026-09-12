@@ -131,7 +131,9 @@ jobs:
       # Neither shivammathur/homebrew-php nor homebrew-core ships an Intel
       # macOS bottle any more, so on this runner brew builds PHP from source
       # and setup-php gives up on it. A prebuilt static CLI from the
-      # static-php-cli project carries every extension spc needs.
+      # static-php-cli project carries every extension spc needs. Its curl
+      # aborts inside ngtcp2 on the first request, so composer is kept off
+      # ext-curl: without curl_multi_* it downloads through PHP streams.
       - name: Setup PHP (host for static-php-cli, prebuilt static binary)
         if: matrix.name == 'macos-x86_64'
         run: |
@@ -139,7 +141,7 @@ jobs:
           curl -fsSL "https://dl.static-php.dev/static-php-cli/common/php-${HOST_PHP_VERSION}-cli-macos-x86_64.tar.gz" \
             | tar -xzf - -C "$HOME/host-php"
           curl -fsSL https://getcomposer.org/download/latest-stable/composer.phar -o "$HOME/host-php/composer.phar"
-          printf '#!/bin/sh\nexec "%s/php" "%s/composer.phar" "$@"\n' "$HOME/host-php" "$HOME/host-php" > "$HOME/host-php/composer"
+          printf '#!/bin/sh\nexec "%s/php" -d disable_functions=curl_multi_init,curl_multi_exec "%s/composer.phar" "$@"\n' "$HOME/host-php" "$HOME/host-php" > "$HOME/host-php/composer"
           chmod +x "$HOME/host-php/composer"
           echo "$HOME/host-php" >> "$GITHUB_PATH"
           "$HOME/host-php/php" -v
