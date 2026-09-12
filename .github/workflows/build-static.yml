@@ -144,7 +144,7 @@ jobs:
           echo "$HOME/host-php" >> "$GITHUB_PATH"
           "$HOME/host-php/php" -v
         env:
-          HOST_PHP_VERSION: 8.5.8
+          HOST_PHP_VERSION: 8.4.23
 
       - name: Checkout static-php-cli fork
         uses: actions/checkout@v7
