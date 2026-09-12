@@ -121,11 +121,30 @@ jobs:
             os: macos
     steps:
       - name: Setup PHP (host for static-php-cli)
+        if: matrix.name != 'macos-x86_64'
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
           extensions: mbstring, zlib, curl, dom, xml, tokenizer
           tools: composer
+
+      # Neither shivammathur/homebrew-php nor homebrew-core ships an Intel
+      # macOS bottle any more, so on this runner brew builds PHP from source
+      # and setup-php gives up on it. A prebuilt static CLI from the
+      # static-php-cli project carries every extension spc needs.
+      - name: Setup PHP (host for static-php-cli, prebuilt static binary)
+        if: matrix.name == 'macos-x86_64'
+        run: |
+          mkdir -p "$HOME/host-php"
+          curl -fsSL "https://dl.static-php.dev/static-php-cli/common/php-${HOST_PHP_VERSION}-cli-macos-x86_64.tar.gz" \
+            | tar -xzf - -C "$HOME/host-php"
+          curl -fsSL https://getcomposer.org/download/latest-stable/composer.phar -o "$HOME/host-php/composer.phar"
+          printf '#!/bin/sh\nexec "%s/php" "%s/composer.phar" "$@"\n' "$HOME/host-php" "$HOME/host-php" > "$HOME/host-php/composer"
+          chmod +x "$HOME/host-php/composer"
+          echo "$HOME/host-php" >> "$GITHUB_PATH"
+          "$HOME/host-php/php" -v
+        env:
+          HOST_PHP_VERSION: 8.5.8
 
       - name: Checkout static-php-cli fork
         uses: actions/checkout@v7
