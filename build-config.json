@@ -3,17 +3,17 @@
   "php_is_latest": true,
   "php_src": {
     "repo": "true-async/php-src",
-    "branch": "php-8.6.0-trueasync-0.11.6"
+    "branch": "php-8.6.0-trueasync-0.11.7"
   },
   "extensions": {
     "async": {
       "repo": "true-async/php-async",
-      "branch": "v0.11.6",
+      "branch": "v0.11.7",
       "path": "ext/async"
     },
     "server": {
       "repo": "true-async/server",
-      "branch": "v0.17.0"
+      "branch": "v0.18.0"
     },
     "xdebug": {
       "repo": "true-async/xdebug",
