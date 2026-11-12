@@ -8,12 +8,12 @@
   "extensions": {
     "async": {
       "repo": "true-async/php-async",
-      "branch": "v0.11.7",
+      "branch": "v0.11.8",
       "path": "ext/async"
     },
     "server": {
       "repo": "true-async/server",
-      "branch": "v0.18.0"
+      "branch": "v0.19.0"
     },
     "xdebug": {
       "repo": "true-async/xdebug",
