@@ -112,7 +112,7 @@ jobs:
             arch: aarch64
             os: linux
           - name: macos-aarch64
-            runner: macos-14
+            runner: macos-15
             arch: aarch64
             os: macos
           - name: macos-x86_64
