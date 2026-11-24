@@ -3,21 +3,21 @@
   "php_is_latest": true,
   "php_src": {
     "repo": "true-async/php-src",
-    "branch": "php-8.6.1-trueasync-0.13.0"
+    "branch": "php-8.6.1-trueasync-1.0.0"
   },
   "extensions": {
     "async": {
       "repo": "true-async/php-async",
-      "branch": "v0.13.0",
+      "branch": "v1.0.0",
       "path": "ext/async"
     },
     "server": {
       "repo": "true-async/server",
-      "branch": "v0.20.0"
+      "branch": "v1.0.0"
     },
     "xdebug": {
       "repo": "true-async/xdebug",
-      "branch": "php-8.6.0-trueasync-0.7.0",
+      "branch": "php-8.6.1-trueasync-1.0.0",
       "path": "ext/xdebug"
     },
     "phpredis": {
@@ -26,7 +26,7 @@
     },
     "clickhouse": {
       "repo": "true-async/php-clickhouse",
-      "branch": "v0.1.5"
+      "branch": "v0.1.6"
     }
   },
   "frankenphp": {
